@@ -172,3 +172,31 @@ def test_mu_sweep_monotone(cfg, tmp_path):
     assert res[0]["mean_Q"] == 0 and res[0]["discard_rate"] == 1  # mu <= lambda: unstable queue
     qs = [r["mean_Q"] for r in res[1:]]
     assert qs == sorted(qs)
+
+
+def test_timm_classifier_path(monkeypatch):
+    """Real ViT code path with random weights (no hub download)."""
+    timm = pytest.importorskip("timm")
+    pytest.importorskip("torch")
+    from hcclio.classes import COBOT_CLASSES
+    from hcclio.models import TimmClassifier, _blank_jpeg
+
+    create = timm.create_model
+    monkeypatch.setattr(timm, "create_model", lambda name, pretrained=False, **kw: create(name, pretrained=False, **kw))
+    m = TimmClassifier("iot", "vit_small_patch16_224.augreg_in21k_ft_in1k",
+                       restrict_classes=list(COBOT_CLASSES.values()))
+    p, ms = m.predict(_blank_jpeg())
+    assert p.shape == (1000,) and math.isclose(float(p.sum()), 1.0, rel_tol=1e-4) and ms > 0
+    assert int(p.argmax()) in COBOT_CLASSES.values()
+    assert float(p[[i for i in range(1000) if i not in COBOT_CLASSES.values()]].sum()) == 0.0
+
+
+def test_class_indices_match_timm():
+    pytest.importorskip("timm")
+    from timm.data import ImageNetInfo
+
+    from hcclio.classes import COBOT_CLASSES
+
+    info = ImageNetInfo()
+    for name, idx in COBOT_CLASSES.items():
+        assert name.split("_")[0] in info.index_to_description(idx).lower().replace(" ", "_")
