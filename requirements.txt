@@ -1,0 +1,13 @@
+numpy
+msgpack
+paho-mqtt>=1.6
+pyyaml
+pillow
+# models (IoT, Edge, Cloud). On the Pi 5: pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch
+timm>=0.9
+# analysis
+matplotlib
+# dataset download from Hugging Face
+datasets
+pytest

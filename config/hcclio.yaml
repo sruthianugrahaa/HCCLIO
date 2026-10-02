@@ -1,0 +1,112 @@
+# =====================================================================
+# HCCLIO testbed - single shared configuration for all three tiers.
+# Copy this file unchanged to the Pi, the Edge server and the laptop.
+# Values marked PLACEHOLDER were not given in the spec; tune them.
+# =====================================================================
+
+network:
+  iot_host: mypi4.local
+  edge_host: 10.0.17.25
+  cloud_host: 10.0.17.30          # PLACEHOLDER: set the Windows laptop's IP
+  mqtt:
+    broker_host: 10.0.17.25       # Mosquitto lives on the Edge server
+    broker_port: 1883
+    keepalive_s: 60
+    qos: 1
+    topic_prefix: hcclio
+    response_timeout_s: 60
+  e2lm:
+    port: 9000
+    edge_port: null               # optional per-tier override (loopback runs use 9001/9002)
+    cloud_port: null
+    timeout_s: 2.0                # an unreachable tier counts as timeout_s*1000 ms
+    n_probes: 3                   # probes per measurement, the median is used
+    probe_bytes: 1024
+    server_work_iters: 20000      # fixed CPU work per probe so tier load shows up in the RTT
+
+models:
+  backend: timm                   # timm (real ViTs) | stub (simulated, for dry runs/tests)
+  device: auto                    # auto | cpu | cuda
+  torch_threads: 0                # 0 = torch default
+  # augreg_in21k pretrained, fine-tuned head on ImageNet-1k so the 1000-way
+  # softmax shares one label space with the dataset's ImageNet-1k indices.
+  iot:   {name: vit_small_patch16_224.augreg_in21k_ft_in1k, accuracy: 0.75}
+  edge:  {name: vit_base_patch16_224.augreg_in21k_ft_in1k,  accuracy: 0.80}
+  cloud: {name: vit_large_patch16_224.augreg_in21k_ft_in1k, accuracy: 0.85}
+  restrict_to_dataset_classes: false   # true = softmax over the 30 cobot classes only
+  stub:                           # used only when backend: stub
+    latency_ms: {iot: 5, edge: 3, cloud: 2}
+    num_classes: 1000
+
+gates:
+  tau_conf: 0.80                  # confidence threshold (all tiers)
+  tau_lat_ms: 500                 # Edge latency gate on (delta_wl + delta_E2LM_edge)
+
+weights:                          # collaborative ensemble, each tier sums to 1
+  edge:  {w_i: 0.44, w_ES: 0.56}
+  cloud: {w_i: 0.28, w_ES: 0.34, w_CS: 0.38}
+  # Direct IoT->Cloud path (latency gate failed) has no Edge vector; w_i and
+  # w_CS are renormalised to sum to 1 (0.4242 / 0.5758) unless set here:
+  cloud_direct: null
+
+qoe:
+  # Q_x = (1 - T_x^E2E / T_i^comp) * A_x ; Discard (Q=0) when T_x^E2E >= T_i^comp
+  # t_i_mode: fixed      -> T_i^comp = t_i_ms
+  #           calibrated -> T_i^comp = calib_scale * mean ViT-Small time on the
+  #                         first calib_frames frames, measured on the IoT device
+  t_i_mode: fixed
+  t_i_ms: 1000                    # PLACEHOLDER IoT compute reference
+  calib_frames: 20
+  calib_scale: 2.0
+
+wireless:                         # IoT <-> Edge, Rayleigh small-scale fading
+  fc_hz: 3.5e9
+  bandwidth_hz: 20.0e6
+  distance_m: 10.0
+  pt_dbm: 23.0
+  n0_dbm_per_hz: -174.0
+  noise_figure_db: 0.0            # PLACEHOLDER (spec SNR has no NF term)
+  payload_bits: 1.0e6
+  rho_c: 0.5                      # PLACEHOLDER LOS-probability parameter
+  d_c_m: 18.0                     # PLACEHOLDER LOS-probability distance (3GPP UMi d1)
+  los_mode: sample                # sample a LOS/NLOS state per frame | expected
+  min_rate_bps: 1.0               # floor to avoid divide-by-zero in deep fades
+
+backhaul:                         # Edge <-> Cloud, Gamma(m_bh, theta_bh) in ms
+  # m_bh  = floor((1 + 1.28 * MBS/MGW) * k1 + (h - 1) * k2)
+  # theta = a + K_size * k3 ;  mean = m_bh * theta
+  # All PLACEHOLDERS chosen for a ~19 ms mean on a campus backhaul.
+  mbs_over_mgw: 4.0
+  hops: 3
+  k1: 1.5
+  k2: 1.0
+  a_ms: 0.2
+  k3_ms_per_bit: 1.5e-6
+  k_size_bits: 1.0e6
+
+dataset:
+  root: ~/testbed/dataset/imagenet_1000
+  manifest: manifest.csv
+  n_frames: 1000
+  jpeg_quality: 90
+  hf_dataset: ILSVRC/imagenet-1k  # gated on Hugging Face: accept the licence + `huggingface-cli login`
+  hf_split: validation
+
+logging:
+  log_dir: outputs/logs
+  report_dir: outputs/reports
+  hcclio_csv: qoe_coclio.csv
+
+dci:                              # distributed_benchmark (Zhang et al.)
+  use_ensemble: true              # true = same weighted ensembles, only the latency gate is removed
+
+mu_sweep:
+  tier: ES                        # ES (sweep mu_ES) | CS
+  mu_values: [2, 4, 6, 8, 10, 15, 20, 30, 40, 60, 80, 100]   # frames/s
+  service_model: mm1              # mm1 (sojourn ~ Exp(mu - lambda)) | exp (Exp(mu)) | det (1/mu)
+  arrival_rate: 1.0               # lambda, frames/s, used by mm1
+  trials: 500
+  seed: 2026
+
+sim:
+  seed: 2026
