@@ -106,7 +106,6 @@ New-NetFirewallRule -DisplayName "HCCLIO E2LM" -Direction Inbound -Protocol TCP 
 ```bash
 sudo apt install -y python3-pip python3-venv
 python3 -m venv ~/hcclio-env && source ~/hcclio-env/bin/activate
-pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -r outputs/iot_device_tier/requirements.txt
 ```
 
@@ -228,4 +227,5 @@ For the four paper plots: send their specifications and they will be added as on
 | E2LM probe prints 2000 ms | Port 9000 is blocked by a firewall, or the IP is wrong |
 | Almost every offloaded frame is `Discard` | `qoe.t_i_ms` is too small; redo step 5 |
 | `pip install torch` fails on the Pi | 32-bit OS; reflash the 64-bit image |
+| `operator torchvision::nms does not exist` | torch and torchvision versions don't match: `pip uninstall -y torch torchvision && pip install torch torchvision` |
 | Pi can't connect to the broker | Mosquitto is listening only on localhost; redo the `listener 1883 0.0.0.0` line in step 3 |

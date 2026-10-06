@@ -101,7 +101,7 @@ When you change a parameter, edit `common/hcclio.yaml` and copy that one file to
 On each machine (Python ≥ 3.9) install only that tier's packages:
 
 ```bash
-pip install -r outputs/iot_device_tier/requirements.txt     # Pi 4: 64-bit OS + CPU torch first (see the file)
+pip install -r outputs/iot_device_tier/requirements.txt     # Pi 4: 64-bit OS (see the file)
 pip install -r outputs/edge_server_tier/requirements.txt    # Edge
 pip install -r outputs/cloud_server_tier/requirements.txt   # laptop
 ```

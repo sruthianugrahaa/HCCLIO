@@ -1,11 +1,14 @@
 # Raspberry Pi 4 (IoT tier). Needs the 64-bit Raspberry Pi OS (aarch64): there are no
-# torch wheels for the 32-bit OS. Check with `uname -m` (must print aarch64). Install torch first:
-#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+# torch wheels for the 32-bit OS. Check with `uname -m` (must print aarch64).
+# torch and torchvision must come from the same place in matching versions, or timm
+# fails with "operator torchvision::nms does not exist". On aarch64 the PyPI builds
+# are CPU-only, so plain `pip install -r requirements.txt` is right.
 numpy
 msgpack
 paho-mqtt>=1.6
 pyyaml
 pillow
 torch
+torchvision
 timm>=0.9
 datasets        # only for download_dataset.py --source hf
