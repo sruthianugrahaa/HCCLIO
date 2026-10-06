@@ -13,7 +13,8 @@ Sources (pick one):
   --source existing  Images you already have in one folder (any layout). Writes
                    manifest.csv next to them without copying anything. The class of
                    each image is read from its sub-folder or file name (synset such
-                   as n03384352, or a class name such as forklift), or from
+                   as n03384352, a class index such as class786, or a class name such as
+                   forklift), or from
                    --labels CSV (columns: file name, then label as synset, class
                    index or class name; Kaggle's LOC_val_solution.csv also works).
   --source synthetic  Noise images for stub-model dry runs (no download).
@@ -158,6 +159,9 @@ def _guess_label(rel: pathlib.Path, by_key: dict, labels: dict):
     m = re.search(r"n\d{8}", text)
     if m and m.group(0) in by_key:
         return by_key[m.group(0)]
+    m = re.search(r"class[_\-]?(\d{1,3})(?!\d)", text)  # e.g. 0950_class786_sewing_mach.jpg
+    if m and m.group(1) in by_key:
+        return by_key[m.group(1)]
     norm = re.sub(r"[\s\-]+", "_", text)
     for name in sorted(COBOT_CLASSES, key=len, reverse=True):  # longest first: pop_bottle before bottle
         if re.search(rf"(^|[/_.]){re.escape(name)}([/_.\d]|$)", norm):
@@ -188,6 +192,11 @@ def from_existing(src: pathlib.Path, labels_csv: pathlib.Path | None):
     other = sum(1 for r in rows if r["ground_truth_idx"] not in INDEX_TO_NAME)
     print(f"{len(rows)} images labelled, {len(unknown)} without a label (skipped)"
           + (f", {other} labelled with a class outside the 30 cobot classes" if other else ""))
+    from collections import Counter
+
+    per = Counter(r["ground_truth_name"] for r in rows)
+    if per:
+        print(f"{len(per)} classes, {min(per.values())}-{max(per.values())} images each")
     for p in unknown[:5]:
         print(f"  no label for {p.relative_to(src)}")
     if unknown and not labels:
