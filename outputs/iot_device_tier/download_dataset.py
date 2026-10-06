@@ -168,6 +168,8 @@ def _guess_label(rel: pathlib.Path, by_key: dict, labels: dict):
 def from_existing(src: pathlib.Path, labels_csv: pathlib.Path | None):
     """Label images already on disk; returns (root, rows) with paths relative to root."""
     src = src.expanduser().resolve()
+    if not src.is_dir():
+        sys.exit(f"folder not found: {src}")
     root = src.parent
     by_key = _label_lookup()
     labels = _read_labels(labels_csv.expanduser()) if labels_csv else {}
@@ -179,6 +181,10 @@ def from_existing(src: pathlib.Path, labels_csv: pathlib.Path | None):
             continue
         rows.append({"image_file": p.relative_to(root).as_posix(), "ground_truth_idx": hit[0],
                      "ground_truth_name": hit[1]})
+    if not rows and not unknown:
+        found = sorted(p.name for p in src.iterdir())[:5]
+        sys.exit(f"no image files ({', '.join(sorted(IMAGE_EXTS))}) in {src}"
+                 + (f"; it contains e.g. {found}" if found else "; the folder is empty"))
     other = sum(1 for r in rows if r["ground_truth_idx"] not in INDEX_TO_NAME)
     print(f"{len(rows)} images labelled, {len(unknown)} without a label (skipped)"
           + (f", {other} labelled with a class outside the 30 cobot classes" if other else ""))
