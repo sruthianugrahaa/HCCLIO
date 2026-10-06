@@ -1,4 +1,4 @@
-"""inference.py - IoT tier: local ViT-Small/16 inference on the Raspberry Pi 5.
+"""inference.py - IoT tier: local ViT-Small/16 inference on the Raspberry Pi 4.
 
 For one JPEG frame it returns
     p_i  softmax vector over the 1000 ImageNet-1k classes (float32)
@@ -49,7 +49,7 @@ class ViTSmall:
         import torch
         from PIL import Image
 
-        torch.set_num_threads(threads)  # Pi 5 has 4 cores
+        torch.set_num_threads(threads)  # Pi 4 has 4 Cortex-A72 cores
         self.torch, self.Image = torch, Image
         self.model = timm.create_model(model_name, pretrained=True).eval()
         cfg = timm.data.resolve_data_config({}, model=self.model)
@@ -74,8 +74,17 @@ class ViTSmall:
 
 
 if __name__ == "__main__":
+    # Time ViT-Small on this device and suggest qoe.t_i_ms for common/hcclio.yaml:
+    #     python inference.py some_frame.jpg [repeats]
     import sys
 
+    import numpy as np
+
     model = ViTSmall()
-    r = model.infer(open(sys.argv[1], "rb").read())
-    print(f"y_i={r.y_i}  c_i={r.c_i:.3f}  t={r.t_ms:.1f} ms")
+    jpeg = open(sys.argv[1], "rb").read()
+    n = int(sys.argv[2]) if len(sys.argv) > 2 else 20
+    runs = [model.infer(jpeg) for _ in range(n)]
+    t = np.array([r.t_ms for r in runs])
+    print(f"y_i={runs[0].y_i}  c_i={runs[0].c_i:.3f}")
+    print(f"ViT-Small over {n} runs: mean {t.mean():.1f} ms, median {np.median(t):.1f} ms, max {t.max():.1f} ms")
+    print(f"suggested qoe.t_i_ms (2 x mean, same as calib_scale 2.0): {2 * t.mean():.0f}")

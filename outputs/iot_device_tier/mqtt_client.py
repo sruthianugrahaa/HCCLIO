@@ -7,7 +7,7 @@ Where MQTT sits in HCCLIO
         hcclio/edge/request    (latency gate passed)   JPEG + p_i + timings
         hcclio/cloud/request   (latency gate failed)   JPEG + p_i + timings
     and receives the final answer on its own topic
-        hcclio/iot/pi5-hcclio/response
+        hcclio/iot/pi4-hcclio/response
     from whichever tier answered (Edge or Cloud).
   * Payloads are msgpack dicts; p_i travels as raw float32 bytes.
 """

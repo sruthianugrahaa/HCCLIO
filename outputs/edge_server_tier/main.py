@@ -1,4 +1,4 @@
-"""main.py - Edge server tier (Ubuntu 10.0.17.25): HCCLIO Algorithm 1, Edge side.
+"""main.py - Edge tier (Ubuntu laptop 10.0.17.25): HCCLIO Algorithm 1, Edge side.
 
 Start-up
   1. config.py                load the shared common/hcclio.yaml

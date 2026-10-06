@@ -1,4 +1,4 @@
-"""main.py - IoT device tier (Raspberry Pi 5): HCCLIO Algorithm 1, IoT side.
+"""main.py - IoT device tier (Raspberry Pi 4): HCCLIO Algorithm 1, IoT side.
 
 For each frame x:
   1. load_dataset.py  next frame (JPEG + ground truth)
@@ -74,7 +74,7 @@ class IoTTier:
         self.topic_edge, self.topic_cloud = t["edge_request"], t["cloud_request"]
         self.mqtt = None
         if strategy != "local_only":
-            client = f"pi5-{strategy}"
+            client = f"pi4-{strategy}"
             self.mqtt = MqttClient(cfg.broker_host, cfg.broker_port, f"iot-{client}",
                                    t["iot_response"].format(client=client), cfg.qos)
 

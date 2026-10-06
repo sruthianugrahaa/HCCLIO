@@ -1,4 +1,4 @@
-# Ubuntu Edge server. Also: sudo apt install mosquitto
+# Ubuntu laptop (Edge tier). Also: sudo apt install mosquitto
 numpy
 msgpack
 paho-mqtt>=1.6

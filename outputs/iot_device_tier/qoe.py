@@ -82,7 +82,8 @@ def tier_delay_ms(rng, tau_tx_ms: float, mu_s: float, p_x: float, lam: float) ->
 
 
 if __name__ == "__main__":
-    # Example: calibrate mu_i from a measured 180 ms ViT-Small time on the Pi 5
+    # Example: calibrate mu_i from a measured ViT-Small time on the Pi 4 (180 ms is only an example;
+    # use the mean printed by `python inference.py frame.jpg`)
     K = 1e6
     f_i = rate_from_measurement("i", 180.0)
     mu_i = service_time_s(complexity_from_model("i", K), K, f_i)

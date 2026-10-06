@@ -5,7 +5,7 @@ Each machine stores only the shared `outputs/common/` folder (about 60 KB) plus 
 ## What each machine stores
 
 ```
-Raspberry Pi 5 (IoT)                 Ubuntu Edge 10.0.17.25            Windows laptop (Cloud)
+Raspberry Pi 4 (IoT)                 Ubuntu laptop (Edge) 10.0.17.25   Windows laptop (Cloud)
 ~/hcclio/outputs/                    ~/hcclio/outputs/                 C:\hcclio\outputs\
 ├── common/                          ├── common/                       ├── common/
 ├── iot_device_tier/                 └── edge_server_tier/             ├── cloud_server_tier/
@@ -114,7 +114,7 @@ Not in the repository:
 |---|---|---|
 | `hcclio/edge/request` | Pi → Edge | JPEG + p_i + timings |
 | `hcclio/cloud/request` | Edge → Cloud (cascade), or Pi → Cloud (latency gate failed) | JPEG + p_i (+ p_ES) + timings |
-| `hcclio/iot/pi5-hcclio/response` | Edge or Cloud → Pi | final answer + all timings |
+| `hcclio/iot/pi4-hcclio/response` | Edge or Cloud → Pi | final answer + all timings |
 
 **5. The Pi writes the CSV.** Every answer returns to the Pi with all the timings collected along the way. So one machine computes T^E2E and Q_x and writes one complete row per frame, and there are no clocks on different machines to synchronise.
 

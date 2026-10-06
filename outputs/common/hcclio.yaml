@@ -55,7 +55,8 @@ qoe:
   #           calibrated -> T_i^comp = calib_scale * mean ViT-Small time on the
   #                         first calib_frames frames, measured on the IoT device
   t_i_mode: fixed
-  t_i_ms: 1000                    # PLACEHOLDER IoT compute reference
+  t_i_ms: 1000                    # PLACEHOLDER: measure ViT-Small on the Pi 4 with
+                                  # `python iot_device_tier/inference.py frame.jpg` and use its suggestion
   calib_frames: 20
   calib_scale: 2.0
 

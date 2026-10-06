@@ -8,8 +8,8 @@ its end-to-end latency and Quality of Experience so a Monte-Carlo sweep of QoE v
 
 | Tier  | Machine                      | Model (timm, `augreg_in21k`)        | Acc. A_x |
 |-------|------------------------------|-------------------------------------|----------|
-| IoT   | Raspberry Pi 5 `mypi4.local` | ViT-Small/16 → p_i, c_i, y_i        | 0.75     |
-| Edge  | Ubuntu `10.0.17.25` + Mosquitto | ViT-Base/16 → p_ES, c_ES, y_ES   | 0.80     |
+| IoT   | Raspberry Pi 4 `mypi4.local` | ViT-Small/16 → p_i, c_i, y_i        | 0.75     |
+| Edge  | Ubuntu laptop `10.0.17.25` + Mosquitto | ViT-Base/16 → p_ES, c_ES, y_ES   | 0.80     |
 | Cloud | Windows laptop               | ViT-Large/16 → p_CS, c_CS, y_CS     | 0.85     |
 
 Transport is MQTT (broker on the Edge) carrying msgpack messages with the JPEG and the softmax
@@ -27,7 +27,7 @@ outputs/
     messages.py             MQTT topic names + msgpack encoding of the messages
     classes.py              the 30 cobot ImageNet classes
     stub_vit.py             simulated ViT for dry runs (--backend stub)
-  iot_device_tier/          PI 5 ONLY, one file per step:
+  iot_device_tier/          PI 4 ONLY, one file per step:
     main.py                 Algorithm 1 on the Pi: confidence gate, latency gate, offloading;
                             --strategy hcclio|local_only|edge_only|cloud_only|dci
     config.py               IoT settings from common/hcclio.yaml
@@ -39,9 +39,9 @@ outputs/
     results.py              per-frame CSV (outputs/logs/qoe_coclio.csv)
     download_dataset.py     builds the 1000-frame dataset
     requirements.txt
-  benchmark_strategies/     PI 5 ONLY: one-line wrappers that run iot_device_tier/main.py --strategy ...
+  benchmark_strategies/     PI 4 ONLY: one-line wrappers that run iot_device_tier/main.py --strategy ...
     edge_only/run.py  cloud_only/run.py  local_only/run.py  distributed_benchmark/run.py (DCI)
-  edge_server_tier/         EDGE (UBUNTU) ONLY:
+  edge_server_tier/         EDGE (UBUNTU LAPTOP) ONLY:
     main.py                 receives frames, ViT-Base, ensemble, answer or cascade to the Cloud
     config.py               Edge settings from common/hcclio.yaml
     models.py               loads ViT-Base/16
@@ -71,8 +71,8 @@ tests/                      development only: pytest suite
 
 | Machine | Copy these folders (keep them side by side under one `outputs/`) |
 |---|---|
-| Raspberry Pi 5 | `common/`, `iot_device_tier/`, `benchmark_strategies/`, `logs/` |
-| Ubuntu Edge | `common/`, `edge_server_tier/` |
+| Raspberry Pi 4 | `common/`, `iot_device_tier/`, `benchmark_strategies/`, `logs/` |
+| Ubuntu laptop (Edge) | `common/`, `edge_server_tier/` |
 | Windows laptop | `common/`, `cloud_server_tier/`, `run_mu_sweep.py`, `make_report.py`, `logs/`, `reports/` |
 
 Each tier finds `common/` as its sibling folder, so the only rule is: `common/` and the tier folder
@@ -100,19 +100,31 @@ When you change a parameter, edit `common/hcclio.yaml` and copy that one file to
 On each machine (Python ≥ 3.9) install only that tier's packages:
 
 ```bash
-pip install -r outputs/iot_device_tier/requirements.txt     # Pi: install CPU torch first (see the file)
+pip install -r outputs/iot_device_tier/requirements.txt     # Pi 4: 64-bit OS + CPU torch first (see the file)
 pip install -r outputs/edge_server_tier/requirements.txt    # Edge
 pip install -r outputs/cloud_server_tier/requirements.txt   # laptop
 ```
 
 Set at least `network.cloud_host` (the laptop's IP) in `outputs/common/hcclio.yaml`.
 
-**Edge (Ubuntu)**: Mosquitto 2.x only listens on localhost by default:
+**Edge (Ubuntu laptop)**: Mosquitto 2.x only listens on localhost by default:
 
 ```bash
 sudo apt install mosquitto
 printf 'listener 1883 0.0.0.0\nallow_anonymous true\n' | sudo tee /etc/mosquitto/conf.d/hcclio.conf
 sudo systemctl restart mosquitto
+sudo ufw allow 1883/tcp && sudo ufw allow 9000/tcp     # only if ufw is enabled
+```
+
+Because the Edge is a laptop, keep it on mains power and stop it suspending when the lid closes
+(`HandleLidSwitch=ignore` in `/etc/systemd/logind.conf`), or the broker disappears mid-run.
+
+**Pi 4**: use the 64-bit Raspberry Pi OS (`uname -m` must print `aarch64`); PyTorch has no wheels
+for the 32-bit OS. Before the first run, time ViT-Small on the Pi and put the suggested value in
+`qoe.t_i_ms` (see T_i^comp below):
+
+```bash
+python outputs/iot_device_tier/inference.py ~/testbed/dataset/imagenet_1000/images/<any>.jpg
 ```
 
 **Cloud (Windows)**: allow inbound TCP 9000 (E2LM) in Windows Defender Firewall.
@@ -132,11 +144,11 @@ python outputs/iot_device_tier/download_dataset.py --source dir --dir /data/imag
 Start the servers, then the IoT device:
 
 ```bash
-# Edge  (10.0.17.25)
+# Edge  (Ubuntu laptop, 10.0.17.25)
 python outputs/edge_server_tier/main.py
-# Cloud (laptop)
+# Cloud (Windows laptop)
 python outputs/cloud_server_tier/main.py
-# IoT   (Pi 5)
+# IoT   (Pi 4)
 python outputs/iot_device_tier/main.py                            # HCCLIO -> outputs/logs/qoe_coclio.csv
 python outputs/benchmark_strategies/local_only/run.py             # = main.py --strategy local_only
 python outputs/benchmark_strategies/edge_only/run.py
@@ -198,7 +210,7 @@ m_bh = ⌊(1 + 1.28·M_BS/M_GW)·k_1 + (h−1)·k_2⌋ and θ_bh = a + K_size·k
 | M_BS/M_GW, h | 4, 3 hops | |
 | k_1, k_2 | 1.5, 1.0 | → m_bh = 11 |
 | a, k_3 | 0.2 ms, 1.5e-6 ms/bit | K_size = 1 Mb → θ_bh = 1.7 ms, mean T_bh ≈ 18.7 ms |
-| T_i^comp | 1000 ms (`qoe.t_i_mode: fixed`) | see below |
+| T_i^comp | 1000 ms (`qoe.t_i_mode: fixed`) | replace with the Pi 4 measurement, see below |
 | cloud_host | 10.0.17.30 | set the laptop's IP |
 
 **T_i^comp.** Every offloaded frame's E2E latency already contains the IoT's own inference time,
@@ -206,7 +218,10 @@ so using the per-frame measured IoT time as T_i^comp would discard every frame. 
 therefore one reference per run: a fixed value (`t_i_mode: fixed`), or `t_i_mode: calibrated`,
 which sets it to `calib_scale` × the mean ViT-Small time over the first `calib_frames` frames on the
 Pi. It is logged in every row (`T_i_ms`) and `run_mu_sweep.py --t-i-ms` re-scores the logs with
-another value.
+another value. Prefer one fixed value measured once on the Pi 4 (`inference.py` above prints it):
+`calibrated` re-measures in every run, so each strategy would be scored against a slightly
+different T_i^comp. The 1000 ms placeholder must stay well above the Pi 4's ViT-Small time, because
+every offloaded frame's E2E latency includes that local inference.
 
 **Model heads.** The default checkpoints are `*_patch16_224.augreg_in21k_ft_in1k`: ImageNet-21k
 pre-training with the ImageNet-1k head, so all three softmax vectors share the dataset's 1000-class

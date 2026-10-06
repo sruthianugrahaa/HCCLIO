@@ -1,7 +1,7 @@
 # Processing rates μ_i, μ_ES, μ_CS in HCCLIO
 
 This note carries the cobot-tier M/M/1 model from your earlier work over to all three HCCLIO tiers.
-In the formulas, x stands for i (IoT, Pi 5), ES (Edge) or CS (Cloud).
+In the formulas, x stands for i (IoT, Pi 4), ES (Edge) or CS (Cloud).
 
 ## 1. The model
 
@@ -10,7 +10,7 @@ In the formulas, x stands for i (IoT, Pi 5), ES (Edge) or CS (Cloud).
 | Mean service (inference) time | μ_x = C_x K_task / f_x  [s] | the time one ViT forward pass takes on tier x |
 | Computation complexity | C_x [ops/bit] | ViT multiply-accumulates per image ÷ K_task: ViT-S 4.6 G, ViT-B 17.6 G, ViT-L 61.6 G |
 | Task size | K_task [bit] | 1 Mb (the same payload as the Rayleigh link) |
-| Computational rate | f_x [ops/s] | the effective speed of the Pi 5, the Edge server or the laptop |
+| Computational rate | f_x [ops/s] | the effective speed of the Pi 4, the Ubuntu Edge laptop or the Windows Cloud laptop |
 | Arrivals at tier x | P_x λ | λ = frames/s generated at the IoT; P_i = 1, while P_ES and P_CS are the shares of frames that the gates send to the Edge or the Cloud |
 | Mean system time | τ̄_sys,x = (μ_x⁻¹ − P_x λ)⁻¹ | queueing + service; the queue is stable only if μ_x⁻¹ > P_x λ |
 | Tier delay | τ_x = τ_tx,x + τ_sys,x,  τ_sys,x ~ Exp(mean τ̄_sys,x) | τ_tx: Rayleigh delay (IoT→ES), plus the Gamma backhaul delay (ES→CS) |

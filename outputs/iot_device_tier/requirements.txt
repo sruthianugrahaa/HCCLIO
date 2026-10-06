@@ -1,4 +1,5 @@
-# Raspberry Pi 5 (IoT tier). Install torch first:
+# Raspberry Pi 4 (IoT tier). Needs the 64-bit Raspberry Pi OS (aarch64): there are no
+# torch wheels for the 32-bit OS. Check with `uname -m` (must print aarch64). Install torch first:
 #   pip install torch --index-url https://download.pytorch.org/whl/cpu
 numpy
 msgpack
