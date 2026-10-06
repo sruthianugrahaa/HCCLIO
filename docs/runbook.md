@@ -14,7 +14,7 @@ Do the steps in order. Each machine needs internet the first time, to install pa
 
 ## Step 0: find the IP addresses
 
-- **Ubuntu laptop:** run `hostname -I`. The first address should be `10.0.17.25`. If it isn't, note the address you get.
+- **Ubuntu laptop (Edge):** it is `10.0.17.25` when plugged into the H3C testbed L2 switch, and `10.0.51.158` on Wi-Fi. Run the experiments on the switch: Wi-Fi changes the measured E2LM delays from run to run, and the Pi and the Windows laptop can only reach the Edge on an address of the network they are on. So plug all three machines into the switch, or else put all three on Wi-Fi and set `edge_host` and `broker_host` to `10.0.51.158`.
 - **Windows laptop:** run `ipconfig` in PowerShell and note the "IPv4 Address" of the Wi-Fi or Ethernet adapter, for example `10.0.17.30`.
 - **Pi 4:** run `hostname -I`.
 - **Check:** from each machine, `ping` the other two. All three must reach each other.
