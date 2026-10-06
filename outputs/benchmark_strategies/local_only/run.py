@@ -1,13 +1,12 @@
 """Benchmark: ViT-Small only, no offload. Run on the IoT device.
 
-    python outputs/benchmark_strategies/local_only/run.py [--limit N]
+Same as:  python outputs/iot_device_tier/main.py --strategy local_only [--limit N]
+Writes outputs/logs/qoe_local_only.csv.
 """
-import pathlib
+import runpy
 import sys
-
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))  # repo root
-
-from hcclio.cli import iot_main  # noqa: E402
+from pathlib import Path
 
 if __name__ == "__main__":
-    iot_main(default_strategy="local_only")
+    sys.argv[1:1] = ["--strategy", "local_only"]
+    runpy.run_path(str(Path(__file__).resolve().parents[2] / "iot_device_tier" / "main.py"), run_name="__main__")

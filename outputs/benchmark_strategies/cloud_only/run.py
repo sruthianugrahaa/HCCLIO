@@ -1,13 +1,12 @@
 """Benchmark: every frame -> Cloud, no local ViT. Run on the IoT device.
 
-    python outputs/benchmark_strategies/cloud_only/run.py [--limit N]
+Same as:  python outputs/iot_device_tier/main.py --strategy cloud_only [--limit N]
+Writes outputs/logs/qoe_cloud_only.csv.
 """
-import pathlib
+import runpy
 import sys
-
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))  # repo root
-
-from hcclio.cli import iot_main  # noqa: E402
+from pathlib import Path
 
 if __name__ == "__main__":
-    iot_main(default_strategy="cloud_only")
+    sys.argv[1:1] = ["--strategy", "cloud_only"]
+    runpy.run_path(str(Path(__file__).resolve().parents[2] / "iot_device_tier" / "main.py"), run_name="__main__")

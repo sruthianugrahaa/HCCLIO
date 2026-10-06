@@ -1,7 +1,7 @@
 """main.py - Cloud server tier (Windows laptop): HCCLIO Algorithm 1, Cloud side.
 
 Start-up
-  1. config.py          load the shared config/hcclio.yaml
+  1. config.py          load the shared common/hcclio.yaml
   2. model.py           load ViT-Large/16 once
   3. backhaul_delay.py  Gamma Edge<->Cloud backhaul delay model
   4. e2lm_server.py     E2LM probe server on TCP :9000
@@ -29,7 +29,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-sys.path.insert(1, str(HERE.parents[1]))
+sys.path.insert(1, str(HERE.parent))  # outputs/ (holds common/)
 
 from backhaul_delay import BackhaulDelay  # noqa: E402
 from config import load  # noqa: E402
@@ -38,7 +38,7 @@ from inference import cloud_inference  # noqa: E402
 from model import ViTLarge  # noqa: E402
 from mqtt_client import MqttClient  # noqa: E402
 
-from hcclio.transport import topics  # noqa: E402
+from common.messages import topics  # noqa: E402
 
 log = logging.getLogger("cloud")
 

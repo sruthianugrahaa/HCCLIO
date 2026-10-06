@@ -1,6 +1,6 @@
 # =====================================================================
 # HCCLIO testbed - single shared configuration for all three tiers.
-# Copy this file unchanged to the Pi, the Edge server and the laptop.
+# It lives in outputs/common/, which is copied to all three machines.
 # Values marked PLACEHOLDER were not given in the spec; tune them.
 # =====================================================================
 
@@ -93,8 +93,8 @@ dataset:
   hf_split: validation
 
 logging:
-  log_dir: outputs/logs
-  report_dir: outputs/reports
+  log_dir: logs                   # relative to the outputs/ folder on each machine
+  report_dir: reports
   hcclio_csv: qoe_coclio.csv
 
 dci:                              # distributed_benchmark (Zhang et al.)

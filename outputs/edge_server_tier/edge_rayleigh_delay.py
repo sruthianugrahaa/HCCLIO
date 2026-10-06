@@ -21,7 +21,7 @@ import math
 
 import numpy as np
 
-# spec values (overridden by config/hcclio.yaml -> wireless when main.py runs)
+# spec values (overridden by common/hcclio.yaml -> wireless when main.py runs)
 DEFAULTS = dict(fc_hz=3.5e9, bandwidth_hz=20e6, distance_m=10.0, pt_dbm=23.0, n0_dbm_per_hz=-174.0,
                 noise_figure_db=0.0, payload_bits=1e6, rho_c=0.5, d_c_m=18.0)
 

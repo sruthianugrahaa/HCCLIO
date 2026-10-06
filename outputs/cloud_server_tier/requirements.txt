@@ -1,0 +1,9 @@
+# Windows laptop (Cloud tier + analysis scripts)
+numpy
+msgpack
+paho-mqtt>=1.6
+pyyaml
+pillow
+torch
+timm>=0.9
+matplotlib      # run_mu_sweep.py plots

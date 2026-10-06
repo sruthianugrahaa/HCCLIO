@@ -1,0 +1,8 @@
+# Ubuntu Edge server. Also: sudo apt install mosquitto
+numpy
+msgpack
+paho-mqtt>=1.6
+pyyaml
+pillow
+torch
+timm>=0.9

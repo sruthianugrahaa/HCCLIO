@@ -18,9 +18,9 @@ import sys
 import threading
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # outputs/ (holds common/)
 
-from hcclio.transport import pack, unpack  # noqa: E402  (msgpack + numpy codec)
+from common.messages import pack, unpack  # noqa: E402  (msgpack + numpy codec)
 
 
 class MqttClient:

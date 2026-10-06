@@ -17,7 +17,7 @@ in its latency gate.
 If a tier cannot be reached, the delay is reported as timeout_s * 1000
 (2000 ms by default), which always fails the 500 ms latency gate.
 
-    python e2lm.py                    # probe Edge and Cloud from config/hcclio.yaml
+    python e2lm.py                    # probe Edge and Cloud from common/hcclio.yaml
     python e2lm.py 10.0.17.25 9000    # probe one host
 """
 

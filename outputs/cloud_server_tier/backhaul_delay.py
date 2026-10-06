@@ -8,7 +8,7 @@ direct from the IoT device) and adds it to the frame's timings.
     theta_bh = a + K_size * k3
     mean     = m_bh * theta_bh
 
-Constants come from config/hcclio.yaml -> backhaul (placeholders, see README).
+Constants come from common/hcclio.yaml -> backhaul (placeholders, see README).
 
     python backhaul_delay.py     # prints m_bh, theta_bh and the delay statistics
 """

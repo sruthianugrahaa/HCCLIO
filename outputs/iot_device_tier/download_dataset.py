@@ -21,11 +21,41 @@ import pathlib
 import random
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))  # repo root
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))  # outputs/ (holds common/)
 
-from hcclio.classes import COBOT_CLASSES, INDEX_TO_NAME  # noqa: E402
-from hcclio.config import load_config  # noqa: E402
-from hcclio.dataset_loader import make_synthetic_dataset, write_manifest  # noqa: E402
+from common.classes import COBOT_CLASSES, INDEX_TO_NAME  # noqa: E402
+from common.settings import load_settings  # noqa: E402
+
+
+def write_manifest(root: pathlib.Path, rows: list[dict]) -> pathlib.Path:
+    import csv
+
+    path = root / "manifest.csv"
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=["image_file", "ground_truth_idx", "ground_truth_name"])
+        w.writeheader()
+        w.writerows(rows)
+    return path
+
+
+def make_synthetic_dataset(root, n: int = 100, seed: int = 0, size: int = 224) -> pathlib.Path:
+    """Noise images tagged with their ground truth in the JPEG comment (read by the stub ViTs)."""
+    import numpy as np
+    from PIL import Image
+
+    root = pathlib.Path(root).expanduser()
+    (root / "images").mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(seed)
+    names = list(COBOT_CLASSES)
+    rows = []
+    for i in range(n):
+        name = names[i % len(names)]
+        idx = COBOT_CLASSES[name]
+        fn = f"images/{i:04d}_{name}.jpg"
+        Image.fromarray(rng.integers(0, 256, (size, size, 3), dtype=np.uint8)).save(
+            root / fn, format="JPEG", quality=85, comment=f"hcclio_gt={idx}".encode())
+        rows.append({"image_file": fn, "ground_truth_idx": idx, "ground_truth_name": name})
+    return write_manifest(root, rows)
 
 
 def quotas(n: int) -> dict[int, int]:
@@ -96,7 +126,7 @@ def check_class_indices():
 
 
 def main(argv=None):
-    cfg = load_config()
+    cfg = load_settings()
     d = cfg["dataset"]
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--source", choices=["hf", "dir", "synthetic"], default="hf")

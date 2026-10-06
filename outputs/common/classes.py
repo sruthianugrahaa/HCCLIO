@@ -1,4 +1,4 @@
-"""The 30 cobot-relevant ImageNet-1k classes used for the 1000-frame dataset."""
+"""classes.py - the 30 cobot-relevant ImageNet-1k classes used for the 1000-frame dataset."""
 
 # name -> ImageNet-1k class index (same ordering as timm / torchvision heads)
 COBOT_CLASSES: dict[str, int] = {

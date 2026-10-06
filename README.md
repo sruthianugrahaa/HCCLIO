@@ -17,61 +17,97 @@ vectors. Each server tier also runs the **E2LM** TCP probe server on port 9000.
 
 ## Layout
 
+Each machine holds only `outputs/common/` (60 KB, the same on all three) plus its own tier folder.
+
 ```
-config/hcclio.yaml          every parameter, shared by all tiers
-hcclio/                     library: channel models, E2LM, transport, models, tiers, QoE, sweep
 outputs/
-  iot_device_tier/          IoT tier, one file per step:
-    main.py                 Algorithm 1 on the Pi: confidence gate, latency gate, offloading
-    config.py               IoT settings from config/hcclio.yaml
+  common/                   COPY TO ALL THREE MACHINES (identical everywhere)
+    hcclio.yaml             every parameter: gates, weights, IPs, channel models, QoE, sweep
+    settings.py             loads + validates hcclio.yaml (weights sum to 1, direct-to-Cloud weights)
+    messages.py             MQTT topic names + msgpack encoding of the messages
+    classes.py              the 30 cobot ImageNet classes
+    stub_vit.py             simulated ViT for dry runs (--backend stub)
+  iot_device_tier/          PI 5 ONLY, one file per step:
+    main.py                 Algorithm 1 on the Pi: confidence gate, latency gate, offloading;
+                            --strategy hcclio|local_only|edge_only|cloud_only|dci
+    config.py               IoT settings from common/hcclio.yaml
     load_dataset.py         frames from ~/testbed/dataset/imagenet_1000 (replaces the camera)
     inference.py            ViT-Small/16 -> p_i, c_i, y_i, time
     e2lm.py                 E2LM delay IoT -> Edge / Cloud; receives the Edge's Rayleigh delay
     mqtt_client.py          publishes frames, waits for the answer on the IoT reply topic
-    qoe.py                  Q_x per frame + M/M/1 mu_i / mu_ES / mu_CS model (docs/mu_model.md)
+    qoe.py                  Q_x per frame + mu_i / mu_ES / mu_CS helpers (docs/mu_model.md)
     results.py              per-frame CSV (outputs/logs/qoe_coclio.csv)
     download_dataset.py     builds the 1000-frame dataset
-    run_iot.py              same algorithm via the library; also used by the benchmarks
-  edge_server_tier/         Edge tier, one file per step:
-    main.py                 receives frames, ViT-Base, ensemble, answer or cascade
-    config.py               Edge settings from config/hcclio.yaml
+    requirements.txt
+  benchmark_strategies/     PI 5 ONLY: one-line wrappers that run iot_device_tier/main.py --strategy ...
+    edge_only/run.py  cloud_only/run.py  local_only/run.py  distributed_benchmark/run.py (DCI)
+  edge_server_tier/         EDGE (UBUNTU) ONLY:
+    main.py                 receives frames, ViT-Base, ensemble, answer or cascade to the Cloud
+    config.py               Edge settings from common/hcclio.yaml
     models.py               loads ViT-Base/16
     inference.py            ViT-Base + 0.44/0.56 ensemble + confidence gate
     e2lm.py                 E2LM probe server :9000 (answers with this frame's Rayleigh delay)
     edge_rayleigh_delay.py  simulated IoT <-> Edge Rayleigh delay (sent to the IoT device)
     mqtt_client.py          MQTT client of the Mosquitto broker running on this machine
-  cloud_server_tier/        Cloud tier, one file per step:
+    requirements.txt
+  cloud_server_tier/        LAPTOP (WINDOWS) ONLY:
     main.py                 receives frames, adds the backhaul delay, ViT-Large, final answer
-    config.py               Cloud settings from config/hcclio.yaml
+    config.py               Cloud settings from common/hcclio.yaml
     model.py                loads ViT-Large/16
     inference.py            ViT-Large + weighted ensemble + Cloud / Fallback-IoT decision
     e2lm_server.py          E2LM probe server :9000
     backhaul_delay.py       simulated Edge <-> Cloud Gamma backhaul delay
     mqtt_client.py          MQTT client of the broker on the Edge
-  benchmark_strategies/
-    edge_only/run.py        every frame -> Edge, no local ViT, no gates
-    cloud_only/run.py       every frame -> Cloud, no local ViT
-    local_only/run.py       ViT-Small only, no offload
-    distributed_benchmark/run.py   DCI (Zhang et al.): confidence gate only, no latency gate
-  run_mu_sweep.py           Monte-Carlo over mu_ES on the logged CSVs
-  make_report.py            accuracy / QoE / latency / tier-share table
-  logs/                     qoe_coclio.csv and one qoe_<benchmark>.csv per benchmark
-  reports/                  summary.{csv,md}, mu_sweep_ES.{csv,png}
-scripts/loopback.py         all tiers on one machine, for checking the pipeline
-tests/                      pytest suite
+    requirements.txt        also matplotlib for the plots
+  run_mu_sweep.py           LAPTOP: Monte-Carlo QoE vs mu_i / mu_ES / mu_CS on the logged CSVs
+  make_report.py            LAPTOP: accuracy / QoE / latency / tier-share table
+  logs/                     qoe_coclio.csv + one qoe_<benchmark>.csv per benchmark (written on the Pi)
+  reports/                  summary.{csv,md}, mu_sweep_<tier>.{csv,png} (written on the laptop)
+scripts/loopback.py         development only: all tiers on one computer with simulated ViTs
+tests/                      development only: pytest suite
 ```
+
+## What goes on which machine
+
+| Machine | Copy these folders (keep them side by side under one `outputs/`) |
+|---|---|
+| Raspberry Pi 5 | `common/`, `iot_device_tier/`, `benchmark_strategies/`, `logs/` |
+| Ubuntu Edge | `common/`, `edge_server_tier/` |
+| Windows laptop | `common/`, `cloud_server_tier/`, `run_mu_sweep.py`, `make_report.py`, `logs/`, `reports/` |
+
+Each tier finds `common/` as its sibling folder, so the only rule is: `common/` and the tier folder
+must sit in the same parent folder. For example on the Pi, from a clone or a zip of the repo:
+
+```bash
+mkdir -p ~/hcclio/outputs && cd HCCLIO/outputs
+cp -r common iot_device_tier benchmark_strategies logs ~/hcclio/outputs/
+```
+
+or, without copying by hand, a sparse git checkout of just those folders:
+
+```bash
+git clone --filter=blob:none --sparse https://github.com/sruthianugrahaa/HCCLIO && cd HCCLIO
+git sparse-checkout set outputs/common outputs/iot_device_tier outputs/benchmark_strategies outputs/logs
+# Edge:   git sparse-checkout set outputs/common outputs/edge_server_tier
+# Laptop: git sparse-checkout set outputs/common outputs/cloud_server_tier outputs/logs outputs/reports
+#         (run_mu_sweep.py and make_report.py are files in outputs/ and are always checked out)
+```
+
+When you change a parameter, edit `common/hcclio.yaml` and copy that one file to all three machines.
 
 ## Setup
 
-On every machine (Python ≥ 3.9), clone the repo and:
+On each machine (Python ≥ 3.9) install only that tier's packages:
 
 ```bash
-pip install -r requirements.txt     # on the Pi: pip install torch --index-url https://download.pytorch.org/whl/cpu first
+pip install -r outputs/iot_device_tier/requirements.txt     # Pi: install CPU torch first (see the file)
+pip install -r outputs/edge_server_tier/requirements.txt    # Edge
+pip install -r outputs/cloud_server_tier/requirements.txt   # laptop
 ```
 
-Edit `config/hcclio.yaml` once (at least `network.cloud_host`) and copy the same file everywhere.
+Set at least `network.cloud_host` (the laptop's IP) in `outputs/common/hcclio.yaml`.
 
-**Edge (Ubuntu)** — Mosquitto 2.x only listens on localhost by default:
+**Edge (Ubuntu)**: Mosquitto 2.x only listens on localhost by default:
 
 ```bash
 sudo apt install mosquitto
@@ -79,9 +115,9 @@ printf 'listener 1883 0.0.0.0\nallow_anonymous true\n' | sudo tee /etc/mosquitto
 sudo systemctl restart mosquitto
 ```
 
-**Cloud (Windows)** — allow inbound TCP 9000 (E2LM) in Windows Defender Firewall.
+**Cloud (Windows)**: allow inbound TCP 9000 (E2LM) in Windows Defender Firewall.
 
-**Dataset (IoT)** — 1000 frames from the 30 cobot classes (`hcclio/classes.py`), balanced 33–34 per
+**Dataset (Pi)**: 1000 frames from the 30 cobot classes (`common/classes.py`), balanced 33–34 per
 class, written to `~/testbed/dataset/imagenet_1000/` with a `manifest.csv`:
 
 ```bash
@@ -102,23 +138,23 @@ python outputs/edge_server_tier/main.py
 python outputs/cloud_server_tier/main.py
 # IoT   (Pi 5)
 python outputs/iot_device_tier/main.py                            # HCCLIO -> outputs/logs/qoe_coclio.csv
-python outputs/benchmark_strategies/local_only/run.py
+python outputs/benchmark_strategies/local_only/run.py             # = main.py --strategy local_only
 python outputs/benchmark_strategies/edge_only/run.py
 python outputs/benchmark_strategies/cloud_only/run.py
-python outputs/benchmark_strategies/distributed_benchmark/run.py
-# anywhere, after copying outputs/logs/
+python outputs/benchmark_strategies/distributed_benchmark/run.py  # DCI -> qoe_distributed_benchmark.csv
+# laptop, after copying the Pi's outputs/logs/*.csv into the laptop's outputs/logs/
 python outputs/make_report.py
-python outputs/run_mu_sweep.py            # QoE vs mu_ES -> outputs/reports/mu_sweep_ES.{csv,png}
+python outputs/run_mu_sweep.py --tier ES  # QoE vs mu_ES -> outputs/reports/mu_sweep_ES.{csv,png}
 ```
 
 `--limit N` runs the first N frames; `--backend stub` swaps the ViTs for seeded simulated
-classifiers (no torch needed). `python -m hcclio.e2lm probe 10.0.17.25` checks a probe server.
+classifiers (no torch needed). `python outputs/iot_device_tier/e2lm.py 10.0.17.25` checks a probe server.
 
-Dry run of the whole pipeline on one machine (in-process broker, or a local mosquitto):
+Dry run of the whole pipeline on one computer (needs a local mosquitto on 127.0.0.1:1883):
 
 ```bash
-python scripts/loopback.py --limit 200
-python scripts/loopback.py --mqtt 127.0.0.1:1883
+pip install -r requirements-dev.txt
+python scripts/loopback.py --frames 100
 python -m pytest
 ```
 
@@ -153,7 +189,7 @@ N_0 = −174 dBm/Hz.
 **Edge ↔ Cloud (Gamma backhaul).** T_bh ~ Gamma(m_bh, θ_bh) with
 m_bh = ⌊(1 + 1.28·M_BS/M_GW)·k_1 + (h−1)·k_2⌋ and θ_bh = a + K_size·k_3.
 
-## Placeholder values (not given in the spec — tune in `config/hcclio.yaml`)
+## Placeholder values (not given in the spec — tune in `outputs/common/hcclio.yaml`)
 
 | Parameter | Value | Note |
 |---|---|---|
@@ -184,9 +220,10 @@ HCCLIO is the missing latency gate. Set it to `false` for each tier to decide on
 ## μ sweep
 
 `run_mu_sweep.py --tier i|ES|CS` keeps each frame's logged route and prediction and replaces that
-tier's inference time with an M/M/1 system time Exp(mean 1/(μ − P_x λ)), where μ is the service rate
-1/μ_x, μ_x = C_x K_task / f_x, and P_x is the share of frames reaching the tier (unstable queue →
-Discard). `--service-model exp|det` are alternatives. See `docs/mu_model.md`. E2E latency
+tier's inference time with an M/M/1 system time Exp(mean 1/μ) by default, where μ is the service rate
+1/μ_x and μ_x = C_x K_task / f_x. `--service-model mm1` adds M/M/1 queueing,
+Exp(mean 1/(μ − P_x λ)) with P_x the share of frames reaching the tier (unstable queue → Discard),
+and `det` uses a fixed 1/μ. See `docs/mu_model.md`. E2E latency
 and Q_x are recomputed per trial; the output is mean Q_x with a 95 % CI, discard rate and mean E2E
 per μ and per strategy.
 

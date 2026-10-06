@@ -1,13 +1,12 @@
 """Benchmark: every frame -> Edge, no local ViT, no gates. Run on the IoT device.
 
-    python outputs/benchmark_strategies/edge_only/run.py [--limit N]
+Same as:  python outputs/iot_device_tier/main.py --strategy edge_only [--limit N]
+Writes outputs/logs/qoe_edge_only.csv.
 """
-import pathlib
+import runpy
 import sys
-
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))  # repo root
-
-from hcclio.cli import iot_main  # noqa: E402
+from pathlib import Path
 
 if __name__ == "__main__":
-    iot_main(default_strategy="edge_only")
+    sys.argv[1:1] = ["--strategy", "edge_only"]
+    runpy.run_path(str(Path(__file__).resolve().parents[2] / "iot_device_tier" / "main.py"), run_name="__main__")

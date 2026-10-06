@@ -1,7 +1,7 @@
 """main.py - Edge server tier (Ubuntu 10.0.17.25): HCCLIO Algorithm 1, Edge side.
 
 Start-up
-  1. config.py                load the shared config/hcclio.yaml
+  1. config.py                load the shared common/hcclio.yaml
   2. models.py                load ViT-Base/16 once
   3. edge_rayleigh_delay.py   Rayleigh IoT<->Edge channel, sampled per frame and sent to the
                               IoT device in the E2LM reply
@@ -31,7 +31,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-sys.path.insert(1, str(HERE.parents[1]))
+sys.path.insert(1, str(HERE.parent))  # outputs/ (holds common/)
 
 from config import load  # noqa: E402
 from e2lm import E2LMServer, make_channel_fn, probe_ms  # noqa: E402
@@ -40,7 +40,7 @@ from inference import edge_inference  # noqa: E402
 from models import ViTBase  # noqa: E402
 from mqtt_client import MqttClient  # noqa: E402
 
-from hcclio.transport import topics  # noqa: E402
+from common.messages import topics  # noqa: E402
 
 log = logging.getLogger("edge")
 

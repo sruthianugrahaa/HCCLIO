@@ -39,8 +39,8 @@ class ViTSmall:
             import sys
             from pathlib import Path
 
-            sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-            from hcclio.models import StubClassifier
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # outputs/ (holds common/)
+            from common.stub_vit import StubClassifier
 
             self._stub = StubClassifier("iot", accuracy=0.75)
             return

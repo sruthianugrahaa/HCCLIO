@@ -1,4 +1,4 @@
-"""config.py - Edge tier settings, read from the shared config/hcclio.yaml.
+"""config.py - Edge tier settings, read from the shared common/hcclio.yaml.
 
 Every tier reads the same YAML file so the thresholds, weights and network
 addresses can never disagree between the Pi, the Edge and the laptop.
@@ -12,10 +12,10 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]  # outputs/ (holds common/)
 sys.path.insert(0, str(ROOT))
 
-from hcclio.config import load_config  # noqa: E402
+from common.settings import load_settings  # noqa: E402
 
 
 @dataclass
@@ -47,7 +47,7 @@ class EdgeConfig:
 
 
 def load(path: str | None = None, backend: str | None = None) -> EdgeConfig:
-    c = load_config(path)
+    c = load_settings(path)
     n, e, m = c["network"], c["network"]["e2lm"], c["network"]["mqtt"]
     return EdgeConfig(
         broker_host=m["broker_host"], broker_port=int(m["broker_port"]), qos=int(m["qos"]),

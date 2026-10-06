@@ -1,0 +1,4 @@
+# Development only (tests and the one-computer dry run); each machine uses its tier's requirements.txt
+-r outputs/cloud_server_tier/requirements.txt
+datasets
+pytest

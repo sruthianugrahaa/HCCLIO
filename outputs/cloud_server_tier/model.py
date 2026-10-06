@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # outputs/ (holds common/)
 
 MODEL_NAME = "vit_large_patch16_224.augreg_in21k_ft_in1k"
 
@@ -28,7 +28,7 @@ class ViTLarge:
     def __init__(self, model_name: str = MODEL_NAME, backend: str = "timm", accuracy: float = 0.85):
         self.backend = backend
         if backend == "stub":
-            from hcclio.models import StubClassifier
+            from common.stub_vit import StubClassifier
 
             self._stub = StubClassifier("cloud", accuracy)
             return
