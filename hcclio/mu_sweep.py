@@ -5,7 +5,12 @@ sampled service/sojourn time, e2e latency is recomputed from the other logged
 components, and Q_x is re-evaluated (Discard when e2e >= T_i^comp). Routing and
 predictions are kept as logged, because they depend on confidences, not on mu.
 
-  service_model mm1 : sojourn ~ Exp(mu - lambda)   (mu <= lambda -> unstable, Discard)
+mu here is the service RATE of tier x in frames/s, i.e. 1 / mu_x where mu_x =
+C_x K_task / f_x is the mean service time of the M/M/1 cobot-tier model.
+
+  service_model mm1 : system time ~ Exp(mean 1 / (mu - P_x * lambda))
+                      P_x = share of frames that reach tier x in the log
+                      (P_i = 1); mu <= P_x * lambda -> unstable queue, Discard
   service_model exp : service ~ Exp(mu)
   service_model det : service = 1 / mu
 """
@@ -19,7 +24,7 @@ import numpy as np
 
 from .qoe import DELAY_COLUMNS
 
-TIER_COLUMN = {"ES": "edge_inference_ms", "CS": "cloud_inference_ms"}
+TIER_COLUMN = {"i": "local_inference_ms", "ES": "edge_inference_ms", "CS": "cloud_inference_ms"}
 STRATEGY_LABELS = {
     "qoe_coclio.csv": "HCCLIO",
     "qoe_distributed_benchmark.csv": "DCI (conf. only)",
@@ -63,14 +68,17 @@ def sweep(rows: dict, mu_values, tier: str = "ES", trials: int = 500, model: str
           arrival_rate: float = 1.0, seed: int = 0, t_i_ms: float | None = None) -> list[dict]:
     rng = np.random.default_rng(seed)
     col = TIER_COLUMN[tier]
-    hop = "Edge" if tier == "ES" else "Cloud"
-    uses = np.char.find(rows["path"].astype(str), hop) >= 0
+    if tier == "i":
+        uses = rows[col] > 0  # every frame that ran ViT-Small locally
+    else:
+        uses = np.char.find(rows["path"].astype(str), "Edge" if tier == "ES" else "Cloud") >= 0
+    p_x = float(uses.mean())  # P_x: share of frames that reach tier x
     base = sum(rows[c] for c in DELAY_COLUMNS) - np.where(uses, rows[col], 0.0)
     t_i = np.full(base.shape, t_i_ms) if t_i_ms else rows["T_i_ms"]
     a_x = rows["A_x"]
     out = []
     for mu in mu_values:
-        svc = sample_service_ms(rng, float(mu), trials, int(uses.sum()), model, arrival_rate)
+        svc = sample_service_ms(rng, float(mu), trials, int(uses.sum()), model, p_x * arrival_rate)
         e2e = np.tile(base, (trials, 1))
         e2e[:, uses] += svc
         discard = e2e >= t_i
@@ -81,7 +89,7 @@ def sweep(rows: dict, mu_values, tier: str = "ES", trials: int = 500, model: str
             "ci95_Q": float(1.96 * per_trial.std(ddof=1) / np.sqrt(trials)) if trials > 1 else 0.0,
             "discard_rate": float(discard.mean()),
             "mean_e2e_ms": float(np.mean(np.where(np.isfinite(e2e), e2e, np.nan))) if np.isfinite(e2e).any() else float("inf"),
-            "offload_share": float(uses.mean()), "accuracy": float(rows["correct"].mean()),
+            "P_x": p_x, "mean_service_time_ms": 1000.0 / float(mu), "accuracy": float(rows["correct"].mean()),
         })
     return out
 

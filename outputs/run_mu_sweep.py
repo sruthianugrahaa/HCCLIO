@@ -19,7 +19,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", default=None)
     ap.add_argument("--csv", nargs="*", help="logged CSVs (default: all outputs/logs/qoe_*.csv)")
-    ap.add_argument("--tier", choices=["ES", "CS"], default=None)
+    ap.add_argument("--tier", choices=["i", "ES", "CS"], default=None, help="mu_i, mu_ES or mu_CS")
     ap.add_argument("--mu", type=float, nargs="*", help="mu values in frames/s")
     ap.add_argument("--trials", type=int, default=None)
     ap.add_argument("--service-model", choices=["mm1", "exp", "det"], default=None)

@@ -200,3 +200,86 @@ def test_class_indices_match_timm():
     info = ImageNetInfo()
     for name, idx in COBOT_CLASSES.items():
         assert name.split("_")[0] in info.index_to_description(idx).lower().replace(" ", "_")
+
+
+# ---------------------------------------------------------------- IoT tier scripts
+import importlib.util  # noqa: E402
+import shutil  # noqa: E402
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+IOT_DIR = Path(__file__).resolve().parents[1] / "outputs" / "iot_device_tier"
+
+
+def _iot_module(name):
+    spec = importlib.util.spec_from_file_location(f"iot_{name}", IOT_DIR / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod  # dataclasses look their module up here
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_iot_rayleigh_matches_library(cfg):
+    er = _iot_module("edge_rayleigh_delay")
+    a = er.EdgeRayleighDelay(cfg["wireless"], seed=5)
+    b = RayleighChannel(cfg["wireless"], np.random.default_rng(5))
+    assert [a.delay_ms() for _ in range(200)] == pytest.approx([b.delay_ms() for _ in range(200)])
+
+
+def test_iot_qoe_mm1_model():
+    q = _iot_module("qoe")
+    assert q.qoe(250, 1000, 0.8) == (pytest.approx(0.6), False)
+    assert q.qoe(1200, 1000, 0.8) == (0.0, True)
+    mu = q.service_time_s(q.complexity_from_model("i", 1e6), 1e6, q.rate_from_measurement("i", 200.0))
+    assert mu == pytest.approx(0.2)                                  # mu_i reproduces the measured 200 ms
+    assert q.mean_system_time_s(0.2, 1.0, 2.0) == pytest.approx(1 / (5 - 2))
+    assert math.isinf(q.mean_system_time_s(0.2, 1.0, 5.0))           # 1/mu <= P lambda -> unstable
+
+
+def test_iot_load_and_results(tmp_path):
+    make_synthetic_dataset(tmp_path / "ds", 4)
+    frames = _iot_module("load_dataset").load_dataset(str(tmp_path / "ds"))
+    assert len(frames) == 4 and frames[0].jpeg[:2] == b"\xff\xd8"
+    res = _iot_module("results")
+    with res.ResultsCSV(tmp_path / "r.csv") as w:
+        w.save({"frame_id": 0, "tier": "IoT", "correct": 1, "Q_x": 0.5, "e2e_latency_ms": 10.0})
+    assert "1 frames" in res.summarise(tmp_path / "r.csv")
+
+
+@pytest.mark.skipif(shutil.which("mosquitto") is None, reason="needs a local mosquitto broker")
+def test_iot_main_end_to_end(cfg, tmp_path):
+    import yaml
+
+    port = free_port()
+    broker = subprocess.Popen(["mosquitto", "-p", str(port)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        c = dict(cfg)
+        c.pop("_path", None)
+        c["network"] = {**c["network"], "edge_host": "127.0.0.1", "cloud_host": "127.0.0.1"}
+        c["network"]["mqtt"] = {**c["network"]["mqtt"], "broker_host": "127.0.0.1", "broker_port": port}
+        c["network"]["e2lm"] = {**c["network"]["e2lm"], "edge_port": free_port(), "cloud_port": free_port()}
+        c["weights"] = {k: v for k, v in c["weights"].items() if k != "cloud_direct"}
+        path = tmp_path / "c.yaml"
+        path.write_text(yaml.safe_dump(c))
+        cfg2 = load_config(path)
+        from hcclio.transport import make_transport
+
+        import time
+        time.sleep(0.5)
+        servers = [EdgeServer(cfg2, make_transport(cfg2, "e"), start_e2lm=True),
+                   CloudServer(cfg2, make_transport(cfg2, "c"), start_e2lm=True)]
+        make_synthetic_dataset(tmp_path / "ds", 30)
+        out = tmp_path / "q.csv"
+        r = subprocess.run([sys.executable, str(IOT_DIR / "main.py"), "--config", str(path), "--backend", "stub",
+                            "--dataset", str(tmp_path / "ds"), "--csv", str(out)], capture_output=True, text=True,
+                           timeout=120)
+        assert r.returncode == 0, r.stderr[-2000:]
+        import csv as _csv
+
+        rows = list(_csv.DictReader(open(out)))
+        assert len(rows) == 30 and {x["tier"] for x in rows} <= {"IoT", "Edge", "Cloud", "Fallback-IoT"}
+        for s in servers:
+            s.close()
+    finally:
+        broker.terminate()

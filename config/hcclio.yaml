@@ -60,13 +60,13 @@ qoe:
   calib_scale: 2.0
 
 wireless:                         # IoT <-> Edge, Rayleigh small-scale fading
-  fc_hz: 3.5e9
-  bandwidth_hz: 20.0e6
+  fc_hz: 3.5e+9
+  bandwidth_hz: 20.0e+6
   distance_m: 10.0
   pt_dbm: 23.0
   n0_dbm_per_hz: -174.0
   noise_figure_db: 0.0            # PLACEHOLDER (spec SNR has no NF term)
-  payload_bits: 1.0e6
+  payload_bits: 1.0e+6
   rho_c: 0.5                      # PLACEHOLDER LOS-probability parameter
   d_c_m: 18.0                     # PLACEHOLDER LOS-probability distance (3GPP UMi d1)
   los_mode: sample                # sample a LOS/NLOS state per frame | expected
@@ -82,7 +82,7 @@ backhaul:                         # Edge <-> Cloud, Gamma(m_bh, theta_bh) in ms
   k2: 1.0
   a_ms: 0.2
   k3_ms_per_bit: 1.5e-6
-  k_size_bits: 1.0e6
+  k_size_bits: 1.0e+6
 
 dataset:
   root: ~/testbed/dataset/imagenet_1000
@@ -101,10 +101,10 @@ dci:                              # distributed_benchmark (Zhang et al.)
   use_ensemble: true              # true = same weighted ensembles, only the latency gate is removed
 
 mu_sweep:
-  tier: ES                        # ES (sweep mu_ES) | CS
+  tier: ES                        # i (mu_i) | ES (mu_ES) | CS (mu_CS); mu = service rate = 1 / (C K / f)
   mu_values: [2, 4, 6, 8, 10, 15, 20, 30, 40, 60, 80, 100]   # frames/s
   service_model: mm1              # mm1 (sojourn ~ Exp(mu - lambda)) | exp (Exp(mu)) | det (1/mu)
-  arrival_rate: 1.0               # lambda, frames/s, used by mm1
+  arrival_rate: 1.0               # lambda, frames/s; tier x sees P_x * lambda (P_x from the log)
   trials: 500
   seed: 2026
 

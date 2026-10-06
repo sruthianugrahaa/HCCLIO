@@ -21,7 +21,16 @@ vectors. Each server tier also runs the **E2LM** TCP probe server on port 9000.
 config/hcclio.yaml          every parameter, shared by all tiers
 hcclio/                     library: channel models, E2LM, transport, models, tiers, QoE, sweep
 outputs/
-  iot_device_tier/          run_iot.py (Algorithm 1), download_dataset.py
+  iot_device_tier/          IoT tier, one file per step:
+    main.py                 Algorithm 1 on the Pi: confidence gate, latency gate, offloading
+    load_dataset.py         frames from ~/testbed/dataset/imagenet_1000 (replaces the camera)
+    inference.py            ViT-Small/16 -> p_i, c_i, y_i, time
+    edge_rayleigh_delay.py  simulated IoT -> Edge Rayleigh delay
+    e2lm.py                 E2LM delay IoT -> Edge and IoT -> Cloud (TCP :9000)
+    qoe.py                  Q_x per frame + M/M/1 mu_i / mu_ES / mu_CS model (docs/mu_model.md)
+    results.py              per-frame CSV (outputs/logs/qoe_coclio.csv)
+    download_dataset.py     builds the 1000-frame dataset
+    run_iot.py              same algorithm via the library; also used by the benchmarks
   edge_server_tier/         run_edge.py
   cloud_server_tier/        run_cloud.py
   benchmark_strategies/
@@ -77,7 +86,7 @@ python outputs/edge_server_tier/run_edge.py
 # Cloud (laptop)
 python outputs/cloud_server_tier/run_cloud.py
 # IoT   (Pi 5)
-python outputs/iot_device_tier/run_iot.py                         # HCCLIO -> outputs/logs/qoe_coclio.csv
+python outputs/iot_device_tier/main.py                            # HCCLIO -> outputs/logs/qoe_coclio.csv
 python outputs/benchmark_strategies/local_only/run.py
 python outputs/benchmark_strategies/edge_only/run.py
 python outputs/benchmark_strategies/cloud_only/run.py
@@ -159,9 +168,10 @@ HCCLIO is the missing latency gate. Set it to `false` for each tier to decide on
 
 ## μ sweep
 
-`run_mu_sweep.py` keeps each frame's logged route and prediction and replaces the Edge (or Cloud,
-`--tier CS`) inference time with a sampled time at rate μ: M/M/1 sojourn Exp(μ − λ) by default
-(λ = `mu_sweep.arrival_rate`, unstable queue → Discard), or `--service-model exp|det`. E2E latency
+`run_mu_sweep.py --tier i|ES|CS` keeps each frame's logged route and prediction and replaces that
+tier's inference time with an M/M/1 system time Exp(mean 1/(μ − P_x λ)), where μ is the service rate
+1/μ_x, μ_x = C_x K_task / f_x, and P_x is the share of frames reaching the tier (unstable queue →
+Discard). `--service-model exp|det` are alternatives. See `docs/mu_model.md`. E2E latency
 and Q_x are recomputed per trial; the output is mean Q_x with a 95 % CI, discard rate and mean E2E
 per μ and per strategy.
 
