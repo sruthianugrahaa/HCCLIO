@@ -12,7 +12,7 @@ import threading
 
 import numpy as np
 
-from .channel import GammaBackhaul
+from .channel import GammaBackhaul, RayleighChannel
 from .e2lm import E2LMClient, E2LMServer
 from .models import build_classifier
 from .qoe import ensemble, top1
@@ -38,9 +38,14 @@ class _TierServer:
         if start_e2lm:
             e = cfg["network"]["e2lm"]
             port = e2lm_port or e.get(f"{self.tier}_port") or e["port"]
-            self.e2lm_server = E2LMServer("0.0.0.0", int(port), int(e.get("server_work_iters", 0)))
+            self.e2lm_server = E2LMServer("0.0.0.0", int(port), int(e.get("server_work_iters", 0)),
+                                          channel_fn=self.channel_sample)
             self.e2lm_server.start_background()
         self.tx.subscribe(self.topics[self.request_key], self._safe_handle)
+
+    def channel_sample(self) -> dict:
+        """Simulated delays this tier hands to the IoT device on an E2LM probe (none by default)."""
+        return {}
 
     def _infer(self, jpeg: bytes) -> tuple[np.ndarray, float]:
         with self._infer_lock:
@@ -74,13 +79,19 @@ class EdgeServer(_TierServer):
 
     def __init__(self, cfg, transport, classifier=None, start_e2lm=False, rng=None, e2lm_port=None,
                  cloud_host: str | None = None):
+        rng = rng or np.random.default_rng()
+        self.wireless = RayleighChannel(cfg["wireless"], rng)
+        self.backhaul = GammaBackhaul(cfg["backhaul"], rng)
         super().__init__(cfg, transport, classifier, start_e2lm, e2lm_port)
         self.w = cfg["weights"]["edge"]
-        self.backhaul = GammaBackhaul(cfg["backhaul"], rng or np.random.default_rng())
         self.e2lm = E2LMClient(cfg["network"]["e2lm"])
         self.cloud_host = cloud_host or cfg["network"]["cloud_host"]
         self.cloud_e2lm_port = cfg["network"]["e2lm"].get("cloud_port")
         self.dci_ensemble = bool(cfg["dci"]["use_ensemble"])
+
+    def channel_sample(self) -> dict:
+        """The Edge simulates the IoT<->Edge Rayleigh delay and the Edge->Cloud backhaul delay for one frame."""
+        return {"wireless_delay_ms": self.wireless.delay_ms(), "backhaul_delay_ms": self.backhaul.delay_ms()}
 
     def handle(self, msg):
         p_es, t_es = self._infer(msg["jpeg"])
@@ -102,7 +113,8 @@ class EdgeServer(_TierServer):
 
         # cascade to Cloud with p_i, p_ES and the JPEG
         msg["timings"]["E2LM_cloud_ms"] = self.e2lm(self.cloud_host, self.cloud_e2lm_port)
-        msg["timings"]["backhaul_delay_ms"] = self.backhaul.delay_ms()
+        # use the backhaul delay the IoT device already received from this Edge, if it sent one
+        msg["timings"]["backhaul_delay_ms"] = msg.pop("backhaul_delay_ms", None) or self.backhaul.delay_ms()
         msg["route"] += "|edge_conf_fail"
         msg["p_es"] = p_es
         msg["mode"] = "cascade"

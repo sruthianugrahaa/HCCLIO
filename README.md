@@ -23,15 +23,24 @@ hcclio/                     library: channel models, E2LM, transport, models, ti
 outputs/
   iot_device_tier/          IoT tier, one file per step:
     main.py                 Algorithm 1 on the Pi: confidence gate, latency gate, offloading
+    config.py               IoT settings from config/hcclio.yaml
     load_dataset.py         frames from ~/testbed/dataset/imagenet_1000 (replaces the camera)
     inference.py            ViT-Small/16 -> p_i, c_i, y_i, time
-    edge_rayleigh_delay.py  simulated IoT -> Edge Rayleigh delay
-    e2lm.py                 E2LM delay IoT -> Edge and IoT -> Cloud (TCP :9000)
+    e2lm.py                 E2LM delay IoT -> Edge / Cloud; receives the Edge's Rayleigh delay
+    mqtt_client.py          publishes frames, waits for the answer on the IoT reply topic
     qoe.py                  Q_x per frame + M/M/1 mu_i / mu_ES / mu_CS model (docs/mu_model.md)
     results.py              per-frame CSV (outputs/logs/qoe_coclio.csv)
     download_dataset.py     builds the 1000-frame dataset
     run_iot.py              same algorithm via the library; also used by the benchmarks
-  edge_server_tier/         run_edge.py
+  edge_server_tier/         Edge tier, one file per step:
+    main.py                 receives frames, ViT-Base, ensemble, answer or cascade
+    config.py               Edge settings from config/hcclio.yaml
+    models.py               loads ViT-Base/16
+    inference.py            ViT-Base + 0.44/0.56 ensemble + confidence gate
+    e2lm.py                 E2LM probe server :9000 (answers with this frame's channel delays)
+    edge_rayleigh_delay.py  simulated IoT <-> Edge Rayleigh delay (sent to the IoT device)
+    backhaul_delay.py       simulated Edge <-> Cloud Gamma backhaul delay
+    mqtt_client.py          MQTT client of the Mosquitto broker running on this machine
   cloud_server_tier/        run_cloud.py
   benchmark_strategies/
     edge_only/run.py        every frame -> Edge, no local ViT, no gates
@@ -82,7 +91,7 @@ Start the servers, then the IoT device:
 
 ```bash
 # Edge  (10.0.17.25)
-python outputs/edge_server_tier/run_edge.py
+python outputs/edge_server_tier/main.py
 # Cloud (laptop)
 python outputs/cloud_server_tier/run_cloud.py
 # IoT   (Pi 5)

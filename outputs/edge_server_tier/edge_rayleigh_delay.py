@@ -1,4 +1,7 @@
-"""edge_rayleigh_delay.py - IoT tier: simulated IoT -> Edge wireless delay (Rayleigh fading).
+"""edge_rayleigh_delay.py - Edge tier: simulated IoT <-> Edge wireless delay (Rayleigh fading).
+
+The Edge draws one delay per frame and hands it to the IoT device in its E2LM
+reply (see e2lm.py); the IoT device uses it in the latency gate.
 
 Per frame:
     |h|^2 ~ Exp(1)                                  Rayleigh small-scale fading

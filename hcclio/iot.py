@@ -96,27 +96,28 @@ class IoTDevice:
             route = "local_only" if self.strategy == "local_only" else "iot_conf_pass"
             resp = {"tier": "IoT", "prediction_idx": y_i, "aggregated_conf": c_i, "route": route, "path": "IoT"}
         else:
-            timings["wireless_delay_ms"] = self.wireless.delay_ms()
+            # The Edge's E2LM server measures the delay and hands back the simulated
+            # Rayleigh (and backhaul) delay for this frame; sample locally only if it doesn't.
+            timings["E2LM_edge_ms"], chan = self.e2lm.with_channel(self.edge_host, self.edge_e2lm_port)
+            timings["wireless_delay_ms"] = float(chan.get("wireless_delay_ms", self.wireless.delay_ms()))
+            backhaul_ms = float(chan.get("backhaul_delay_ms", self.backhaul.delay_ms()))
             if self.strategy == "cloud_only":
-                go_edge = False
-                route = "cloud_only"
+                go_edge, route = False, "cloud_only"
+                del timings["E2LM_edge_ms"]
             elif self.strategy == "edge_only":
-                timings["E2LM_edge_ms"] = self.e2lm(self.edge_host, self.edge_e2lm_port)
                 go_edge, route = True, "edge_only"
+            elif self.strategy == "dci":
+                go_edge, route = True, "iot_conf_fail"
             else:
-                timings["E2LM_edge_ms"] = self.e2lm(self.edge_host, self.edge_e2lm_port)
-                if self.strategy == "dci":
-                    go_edge, route = True, "iot_conf_fail"
-                else:
-                    go_edge = timings["wireless_delay_ms"] + timings["E2LM_edge_ms"] <= self.tau_lat
-                    route = "iot_conf_fail|lat_pass" if go_edge else "iot_conf_fail|lat_fail"
+                go_edge = timings["wireless_delay_ms"] + timings["E2LM_edge_ms"] <= self.tau_lat
+                route = "iot_conf_fail|lat_pass" if go_edge else "iot_conf_fail|lat_fail"
             payload = {"p_i": p_i, "timings": timings, "route": route, "path": "IoT"}
             if go_edge:
                 resp = self._offload(self.t_edge, frame, payload)
             else:
                 # straight to Cloud: wireless hop to the Edge AP, then the wired backhaul
                 timings["E2LM_cloud_ms"] = self.e2lm(self.cloud_host, self.cloud_e2lm_port)
-                timings["backhaul_delay_ms"] = self.backhaul.delay_ms()
+                timings["backhaul_delay_ms"] = backhaul_ms
                 payload["mode"] = "direct"
                 resp = self._offload(self.t_cloud, frame, payload)
             if resp is None:

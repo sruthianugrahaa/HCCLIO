@@ -210,10 +210,12 @@ import sys  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 IOT_DIR = Path(__file__).resolve().parents[1] / "outputs" / "iot_device_tier"
+EDGE_DIR = IOT_DIR.parent / "edge_server_tier"
 
 
-def _iot_module(name):
-    spec = importlib.util.spec_from_file_location(f"iot_{name}", IOT_DIR / f"{name}.py")
+def _iot_module(name, folder=None):
+    folder = folder or IOT_DIR
+    spec = importlib.util.spec_from_file_location(f"{folder.name}_{name}", folder / f"{name}.py")
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod  # dataclasses look their module up here
     spec.loader.exec_module(mod)
@@ -221,7 +223,7 @@ def _iot_module(name):
 
 
 def test_iot_rayleigh_matches_library(cfg):
-    er = _iot_module("edge_rayleigh_delay")
+    er = _iot_module("edge_rayleigh_delay", EDGE_DIR)
     a = er.EdgeRayleighDelay(cfg["wireless"], seed=5)
     b = RayleighChannel(cfg["wireless"], np.random.default_rng(5))
     assert [a.delay_ms() for _ in range(200)] == pytest.approx([b.delay_ms() for _ in range(200)])
@@ -267,8 +269,16 @@ def test_iot_main_end_to_end(cfg, tmp_path):
 
         import time
         time.sleep(0.5)
-        servers = [EdgeServer(cfg2, make_transport(cfg2, "e"), start_e2lm=True),
-                   CloudServer(cfg2, make_transport(cfg2, "c"), start_e2lm=True)]
+        # Edge = the tier's own main.py; Cloud = the library server
+        edge = subprocess.Popen([sys.executable, str(EDGE_DIR / "main.py"), "--config", str(path), "--backend", "stub"],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        servers = [CloudServer(cfg2, make_transport(cfg2, "c"), start_e2lm=True)]
+        e2lm_port = cfg2["network"]["e2lm"]["edge_port"]
+        for _ in range(100):
+            with socket.socket() as s_:
+                if s_.connect_ex(("127.0.0.1", e2lm_port)) == 0:
+                    break
+            time.sleep(0.1)
         make_synthetic_dataset(tmp_path / "ds", 30)
         out = tmp_path / "q.csv"
         r = subprocess.run([sys.executable, str(IOT_DIR / "main.py"), "--config", str(path), "--backend", "stub",
@@ -279,6 +289,10 @@ def test_iot_main_end_to_end(cfg, tmp_path):
 
         rows = list(_csv.DictReader(open(out)))
         assert len(rows) == 30 and {x["tier"] for x in rows} <= {"IoT", "Edge", "Cloud", "Fallback-IoT"}
+        off = [x for x in rows if x["tier"] != "IoT"]
+        assert off and all(float(x["wireless_delay_ms"]) > 0 for x in off)  # Rayleigh delay came from the Edge
+        assert any("Edge" in x["path"] for x in off)
+        edge.terminate()
         for s in servers:
             s.close()
     finally:
