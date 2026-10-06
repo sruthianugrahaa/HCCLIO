@@ -6,12 +6,13 @@ For each frame x:
   3. confidence gate  c_i >= 0.80 -> answer locally (tier "IoT")
   4. otherwise        e2lm.py probes the Edge: measured delta_E2LM_edge, and the Edge
                       sends back the Rayleigh delay delta_wl it simulated for this
-                      frame (and the backhaul delay). Both are stored for the frame.
+                      frame. Both are stored for the frame.
   5. latency gate     delta_wl + delta_E2LM_edge <= 500 ms
                         yes -> mqtt_client.py: JPEG + p_i -> hcclio/edge/request
                                (Edge ensembles, may cascade to the Cloud)
                         no  -> e2lm.py probes the Cloud (delta_E2LM_cloud),
                                mqtt_client.py: JPEG + p_i -> hcclio/cloud/request
+                               (the Cloud adds the backhaul delay)
   6. the answer comes back on the IoT reply topic; qoe.py computes T_x^E2E and Q_x;
      results.py appends the row to outputs/logs/qoe_coclio.csv
 
@@ -83,16 +84,14 @@ class IoTTier:
             # 4. E2LM to the Edge + the Edge's simulated channel delays for this frame
             timings["E2LM_edge_ms"], channel = self.e2lm.edge_probe()
             timings["wireless_delay_ms"] = float(channel.get("wireless_delay_ms", 0.0))
-            backhaul_ms = float(channel.get("backhaul_delay_ms", 0.0))
             msg = {"frame_id": frame.frame_id, "strategy": "hcclio", "jpeg": frame.jpeg, "p_i": local.p_i,
-                   "path": "IoT", "timings": timings, "backhaul_delay_ms": backhaul_ms}
+                   "path": "IoT", "timings": timings}
             # 5. latency gate
             if timings["wireless_delay_ms"] + timings["E2LM_edge_ms"] <= cfg.tau_lat_ms:
                 msg["route"] = "iot_conf_fail|lat_pass"
                 answer = self.mqtt.request(self.topic_edge, msg, cfg.response_timeout_s)
             else:
                 timings["E2LM_cloud_ms"] = self.e2lm.cloud_ms()
-                timings["backhaul_delay_ms"] = backhaul_ms
                 msg.update(route="iot_conf_fail|lat_fail", mode="direct")
                 answer = self.mqtt.request(self.topic_cloud, msg, cfg.response_timeout_s)
             if answer is None:  # no reply in time: keep the local answer, mark it

@@ -211,6 +211,7 @@ from pathlib import Path  # noqa: E402
 
 IOT_DIR = Path(__file__).resolve().parents[1] / "outputs" / "iot_device_tier"
 EDGE_DIR = IOT_DIR.parent / "edge_server_tier"
+CLOUD_DIR = IOT_DIR.parent / "cloud_server_tier"
 
 
 def _iot_module(name, folder=None):
@@ -269,16 +270,16 @@ def test_iot_main_end_to_end(cfg, tmp_path):
 
         import time
         time.sleep(0.5)
-        # Edge = the tier's own main.py; Cloud = the library server
-        edge = subprocess.Popen([sys.executable, str(EDGE_DIR / "main.py"), "--config", str(path), "--backend", "stub"],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-        servers = [CloudServer(cfg2, make_transport(cfg2, "c"), start_e2lm=True)]
-        e2lm_port = cfg2["network"]["e2lm"]["edge_port"]
-        for _ in range(100):
-            with socket.socket() as s_:
-                if s_.connect_ex(("127.0.0.1", e2lm_port)) == 0:
-                    break
-            time.sleep(0.1)
+        # all three tiers run as their own main.py
+        tiers = [subprocess.Popen([sys.executable, str(d / "main.py"), "--config", str(path), "--backend", "stub"],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) for d in (EDGE_DIR, CLOUD_DIR)]
+        for e2lm_port in (cfg2["network"]["e2lm"]["edge_port"], cfg2["network"]["e2lm"]["cloud_port"]):
+            for _ in range(100):
+                with socket.socket() as s_:
+                    if s_.connect_ex(("127.0.0.1", e2lm_port)) == 0:
+                        break
+                time.sleep(0.1)
+        time.sleep(0.5)  # let both MQTT clients subscribe
         make_synthetic_dataset(tmp_path / "ds", 30)
         out = tmp_path / "q.csv"
         r = subprocess.run([sys.executable, str(IOT_DIR / "main.py"), "--config", str(path), "--backend", "stub",
@@ -292,8 +293,10 @@ def test_iot_main_end_to_end(cfg, tmp_path):
         off = [x for x in rows if x["tier"] != "IoT"]
         assert off and all(float(x["wireless_delay_ms"]) > 0 for x in off)  # Rayleigh delay came from the Edge
         assert any("Edge" in x["path"] for x in off)
-        edge.terminate()
-        for s in servers:
-            s.close()
+        cloud_rows = [x for x in rows if "Cloud" in x["path"]]
+        assert all(float(x["backhaul_delay_ms"]) > 0 for x in cloud_rows)  # added by the Cloud
+        assert all(not x["backhaul_delay_ms"] for x in rows if "Cloud" not in x["path"])
+        for t in tiers:
+            t.terminate()
     finally:
         broker.terminate()

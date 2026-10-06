@@ -37,11 +37,17 @@ outputs/
     config.py               Edge settings from config/hcclio.yaml
     models.py               loads ViT-Base/16
     inference.py            ViT-Base + 0.44/0.56 ensemble + confidence gate
-    e2lm.py                 E2LM probe server :9000 (answers with this frame's channel delays)
+    e2lm.py                 E2LM probe server :9000 (answers with this frame's Rayleigh delay)
     edge_rayleigh_delay.py  simulated IoT <-> Edge Rayleigh delay (sent to the IoT device)
-    backhaul_delay.py       simulated Edge <-> Cloud Gamma backhaul delay
     mqtt_client.py          MQTT client of the Mosquitto broker running on this machine
-  cloud_server_tier/        run_cloud.py
+  cloud_server_tier/        Cloud tier, one file per step:
+    main.py                 receives frames, adds the backhaul delay, ViT-Large, final answer
+    config.py               Cloud settings from config/hcclio.yaml
+    model.py                loads ViT-Large/16
+    inference.py            ViT-Large + weighted ensemble + Cloud / Fallback-IoT decision
+    e2lm_server.py          E2LM probe server :9000
+    backhaul_delay.py       simulated Edge <-> Cloud Gamma backhaul delay
+    mqtt_client.py          MQTT client of the broker on the Edge
   benchmark_strategies/
     edge_only/run.py        every frame -> Edge, no local ViT, no gates
     cloud_only/run.py       every frame -> Cloud, no local ViT
@@ -93,7 +99,7 @@ Start the servers, then the IoT device:
 # Edge  (10.0.17.25)
 python outputs/edge_server_tier/main.py
 # Cloud (laptop)
-python outputs/cloud_server_tier/run_cloud.py
+python outputs/cloud_server_tier/main.py
 # IoT   (Pi 5)
 python outputs/iot_device_tier/main.py                            # HCCLIO -> outputs/logs/qoe_coclio.csv
 python outputs/benchmark_strategies/local_only/run.py

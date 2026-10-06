@@ -40,9 +40,8 @@ class EdgeConfig:
     w_i: float             # 0.44
     w_ES: float            # 0.56
     dci_use_ensemble: bool
-    # simulated channels (sampled here, sent to the IoT device)
+    # simulated Rayleigh channel (sampled here, sent to the IoT device)
     wireless: dict
-    backhaul: dict
     seed: int
     raw: dict              # the full YAML, for anything else
 
@@ -60,7 +59,7 @@ def load(path: str | None = None, backend: str | None = None) -> EdgeConfig:
         accuracy=float(c["models"]["edge"]["accuracy"]), tau_conf=float(c["gates"]["tau_conf"]),
         w_i=float(c["weights"]["edge"]["w_i"]), w_ES=float(c["weights"]["edge"]["w_ES"]),
         dci_use_ensemble=bool(c["dci"]["use_ensemble"]),
-        wireless=dict(c["wireless"]), backhaul=dict(c["backhaul"]), seed=int(c["sim"]["seed"]), raw=c,
+        wireless=dict(c["wireless"]), seed=int(c["sim"]["seed"]), raw=c,
     )
 
 

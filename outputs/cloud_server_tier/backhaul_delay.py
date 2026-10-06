@@ -1,4 +1,7 @@
-"""backhaul_delay.py - Edge tier: simulated Edge <-> Cloud wired backhaul delay.
+"""backhaul_delay.py - Cloud tier: simulated Edge <-> Cloud wired backhaul delay.
+
+The Cloud draws one delay for every frame it receives (cascade from the Edge or
+direct from the IoT device) and adds it to the frame's timings.
 
     T_bh ~ Gamma(m_bh, theta_bh)   [ms]
     m_bh     = floor((1 + 1.28 * M_BS/M_GW) * k1 + (h - 1) * k2)

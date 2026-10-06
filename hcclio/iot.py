@@ -97,10 +97,9 @@ class IoTDevice:
             resp = {"tier": "IoT", "prediction_idx": y_i, "aggregated_conf": c_i, "route": route, "path": "IoT"}
         else:
             # The Edge's E2LM server measures the delay and hands back the simulated
-            # Rayleigh (and backhaul) delay for this frame; sample locally only if it doesn't.
+            # Rayleigh delay for this frame; sample locally only if it doesn't.
             timings["E2LM_edge_ms"], chan = self.e2lm.with_channel(self.edge_host, self.edge_e2lm_port)
             timings["wireless_delay_ms"] = float(chan.get("wireless_delay_ms", self.wireless.delay_ms()))
-            backhaul_ms = float(chan.get("backhaul_delay_ms", self.backhaul.delay_ms()))
             if self.strategy == "cloud_only":
                 go_edge, route = False, "cloud_only"
                 del timings["E2LM_edge_ms"]
@@ -115,9 +114,8 @@ class IoTDevice:
             if go_edge:
                 resp = self._offload(self.t_edge, frame, payload)
             else:
-                # straight to Cloud: wireless hop to the Edge AP, then the wired backhaul
+                # straight to Cloud: wireless hop to the Edge AP; the Cloud adds the backhaul delay
                 timings["E2LM_cloud_ms"] = self.e2lm(self.cloud_host, self.cloud_e2lm_port)
-                timings["backhaul_delay_ms"] = backhaul_ms
                 payload["mode"] = "direct"
                 resp = self._offload(self.t_cloud, frame, payload)
             if resp is None:

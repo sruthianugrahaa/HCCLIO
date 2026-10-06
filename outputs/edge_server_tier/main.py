@@ -3,17 +3,16 @@
 Start-up
   1. config.py                load the shared config/hcclio.yaml
   2. models.py                load ViT-Base/16 once
-  3. edge_rayleigh_delay.py   Rayleigh IoT<->Edge channel   } sampled per frame and sent to the
-     backhaul_delay.py        Gamma Edge<->Cloud backhaul   } IoT device in the E2LM reply
+  3. edge_rayleigh_delay.py   Rayleigh IoT<->Edge channel, sampled per frame and sent to the
+                              IoT device in the E2LM reply
   4. e2lm.py                  E2LM probe server on TCP :9000
   5. mqtt_client.py           subscribe to hcclio/edge/request on the Mosquitto broker
 
 Per offloaded frame (message from the IoT device: JPEG, p_i, timings)
   6. inference.py   p_ES = ViT-Base(JPEG); p_ens = 0.44 p_i + 0.56 p_ES; gate at 0.80
        pass -> publish the answer to the IoT device's reply topic       (tier "Edge")
-       fail -> probe the Cloud (delta_E2LM_cloud), add the backhaul delay the
-               IoT device already received, and publish JPEG + p_i + p_ES to
-               hcclio/cloud/request                                      (cascade)
+       fail -> probe the Cloud (delta_E2LM_cloud) and publish JPEG + p_i + p_ES
+               to hcclio/cloud/request (cascade; the Cloud adds the backhaul delay)
 
 Mosquitto must be running on this machine first (see README).
 
@@ -34,7 +33,6 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(1, str(HERE.parents[1]))
 
-from backhaul_delay import BackhaulDelay  # noqa: E402
 from config import load  # noqa: E402
 from e2lm import E2LMServer, make_channel_fn, probe_ms  # noqa: E402
 from edge_rayleigh_delay import EdgeRayleighDelay  # noqa: E402
@@ -52,10 +50,9 @@ class EdgeTier:
         self.cfg = cfg
         self.model = ViTBase(cfg.model_name, cfg.backend, cfg.accuracy)
         self.infer_lock = threading.Lock()  # one model, one frame at a time
-        self.backhaul = BackhaulDelay(cfg.backhaul, cfg.seed + 1)
         self.e2lm_server = None
         if start_e2lm:
-            channel_fn = make_channel_fn(EdgeRayleighDelay(cfg.wireless, cfg.seed), self.backhaul)
+            channel_fn = make_channel_fn(EdgeRayleighDelay(cfg.wireless, cfg.seed))
             self.e2lm_server = E2LMServer(cfg.e2lm_port, cfg.e2lm_work_iters, channel_fn).start_background()
         t = topics(cfg.topic_prefix)
         self.topic_cloud = t["cloud_request"]
@@ -86,7 +83,6 @@ class EdgeTier:
         # cascade to the Cloud
         msg["timings"]["E2LM_cloud_ms"] = probe_ms(self.cfg.cloud_host, self.cfg.cloud_e2lm_port,
                                                    self.cfg.e2lm_n_probes, timeout_s=self.cfg.e2lm_timeout_s)
-        msg["timings"]["backhaul_delay_ms"] = msg.pop("backhaul_delay_ms", None) or self.backhaul.delay_ms()
         msg.update({"route": msg["route"] + "|edge_conf_fail", "p_es": r.p_ES, "mode": "cascade",
                     "edge_conf": r.c_edge})
         self.mqtt.publish(self.topic_cloud, msg)

@@ -3,11 +3,10 @@
 Server (the IoT device probes it before every offloading decision):
   * each probe packet is echoed after a fixed CPU work unit, so when the Edge is
     loaded the IoT device measures a larger delay -> delta_E2LM_edge;
-  * the IoT device then sends b"CHAN" and the Edge answers with the simulated
-    channel delays it drew for this frame:
-        {"wireless_delay_ms": Rayleigh IoT<->Edge delay   (edge_rayleigh_delay.py),
-         "backhaul_delay_ms": Gamma Edge<->Cloud delay    (backhaul_delay.py)}
-    The IoT device stores both and uses delta_wl + delta_E2LM_edge in its latency gate.
+  * the IoT device then sends b"CHAN" and the Edge answers with the Rayleigh
+    IoT<->Edge delay it drew for this frame (edge_rayleigh_delay.py):
+        {"wireless_delay_ms": delta_wl}
+    The IoT device stores it and uses delta_wl + delta_E2LM_edge in its latency gate.
 
 Client: before a cascade the Edge probes the Cloud's E2LM server -> delta_E2LM_cloud.
 
@@ -81,13 +80,13 @@ class E2LMServer(socketserver.ThreadingTCPServer):
         return self
 
 
-def make_channel_fn(wireless, backhaul):
-    """The per-frame channel sample the Edge sends to the IoT device."""
-    lock = threading.Lock()  # the random generators are shared between connections
+def make_channel_fn(wireless):
+    """The per-frame Rayleigh delay the Edge sends to the IoT device."""
+    lock = threading.Lock()  # the random generator is shared between connections
 
     def channel_fn() -> dict:
         with lock:
-            return {"wireless_delay_ms": wireless.delay_ms(), "backhaul_delay_ms": backhaul.delay_ms()}
+            return {"wireless_delay_ms": wireless.delay_ms()}
 
     return channel_fn
 
@@ -117,7 +116,6 @@ def probe_ms(host: str, port: int = 9000, n_probes: int = 3, probe_bytes: int = 
 if __name__ == "__main__":
     import sys
 
-    from backhaul_delay import BackhaulDelay
     from config import load
     from edge_rayleigh_delay import EdgeRayleighDelay
 
@@ -125,6 +123,6 @@ if __name__ == "__main__":
     if len(sys.argv) > 2 and sys.argv[1] == "probe":
         print(f"{probe_ms(sys.argv[2], cfg.cloud_e2lm_port):.2f} ms")
     else:
-        fn = make_channel_fn(EdgeRayleighDelay(cfg.wireless, cfg.seed), BackhaulDelay(cfg.backhaul, cfg.seed + 1))
+        fn = make_channel_fn(EdgeRayleighDelay(cfg.wireless, cfg.seed))
         print(f"E2LM server on :{cfg.e2lm_port}")
         E2LMServer(cfg.e2lm_port, cfg.e2lm_work_iters, fn).serve_forever()

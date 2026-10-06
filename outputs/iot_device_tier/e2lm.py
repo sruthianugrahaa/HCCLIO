@@ -9,9 +9,9 @@ does a fixed piece of CPU work per probe, so a busy (loaded) tier answers
 slower: that is the "background load" the latency gate sees.
 
 After the probes the IoT device sends b"CHAN" to the Edge, which replies with
-the delays it simulated for this frame (the Rayleigh model lives on the Edge):
-    {"wireless_delay_ms": delta_wl, "backhaul_delay_ms": T_bh}
-The IoT device stores them with delta_E2LM_edge and uses delta_wl + delta_E2LM_edge
+the Rayleigh delay it simulated for this frame (the model lives on the Edge):
+    {"wireless_delay_ms": delta_wl}
+The IoT device stores it with delta_E2LM_edge and uses delta_wl + delta_E2LM_edge
 in its latency gate.
 
 If a tier cannot be reached, the delay is reported as timeout_s * 1000
@@ -83,7 +83,7 @@ class E2LM:
         self.kw = dict(n_probes=cfg.e2lm_n_probes, probe_bytes=cfg.e2lm_probe_bytes, timeout_s=cfg.e2lm_timeout_s)
 
     def edge_probe(self) -> tuple[float, dict]:
-        """(delta_E2LM_edge, {"wireless_delay_ms", "backhaul_delay_ms"} simulated by the Edge)."""
+        """(delta_E2LM_edge, {"wireless_delay_ms": delta_wl} simulated by the Edge)."""
         return e2lm_probe(*self.edge_addr, **self.kw)
 
     def edge_ms(self) -> float:
