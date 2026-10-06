@@ -134,6 +134,12 @@ python outputs/iot_device_tier/download_dataset.py --source hf
 python outputs/iot_device_tier/download_dataset.py --source dir --dir /path/to/imagenet/val
 ```
 
+**Option C, images you already have** (for example 1000 ImageNet images copied into `~/HCCLIO/images`). This writes `manifest.csv` next to the folder and copies nothing. Each image's class is read from its sub-folder or file name, either a synset like `n03384352` or a class name like `forklift`:
+```bash
+python outputs/iot_device_tier/download_dataset.py --source existing --dir ~/HCCLIO/images
+```
+If the files are named like `ILSVRC2012_val_00000001.JPEG`, the class isn't in the name. Add `--labels LOC_val_solution.csv` (from Kaggle's ImageNet download), or any CSV of file name and synset. The command ends by printing the `--dataset` folder to pass to `main.py` and the benchmarks. Alternatively, set `dataset.root` in `hcclio.yaml` to that folder.
+
 **Check:** `head ~/testbed/dataset/imagenet_1000/manifest.csv` shows rows, and `ls ~/testbed/dataset/imagenet_1000/images | wc -l` prints 1000.
 
 ---
