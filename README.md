@@ -212,7 +212,7 @@ m_bh = ⌊(1 + 1.28·M_BS/M_GW)·k_1 + (h−1)·k_2⌋ and θ_bh = a + K_size·k
 | k_1, k_2 | 1.5, 1.0 | → m_bh = 11 |
 | a, k_3 | 0.2 ms, 1.5e-6 ms/bit | K_size = 1 Mb → θ_bh = 1.7 ms, mean T_bh ≈ 18.7 ms |
 | T_i^comp | 1000 ms (`qoe.t_i_mode: fixed`) | replace with the Pi 4 measurement, see below |
-| cloud_host | 10.0.17.30 | set the laptop's IP |
+| cloud_host | 10.0.51.160 | Windows laptop |
 
 **T_i^comp.** Every offloaded frame's E2E latency already contains the IoT's own inference time,
 so using the per-frame measured IoT time as T_i^comp would discard every frame. T_i^comp is

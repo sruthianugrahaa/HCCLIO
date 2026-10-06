@@ -58,7 +58,7 @@ Open `outputs/common/hcclio.yaml` and set:
 network:
   iot_host: mypi4.local
   edge_host: 10.0.17.25          # Ubuntu laptop IP from step 0
-  cloud_host: 10.0.17.30         # Windows laptop IP from step 0   <-- must change
+  cloud_host: 10.0.51.160        # Windows laptop (Cloud)
   mqtt:
     broker_host: 10.0.17.25      # same as edge_host
 ```

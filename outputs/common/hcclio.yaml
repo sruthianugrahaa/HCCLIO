@@ -9,7 +9,7 @@ network:
   # Edge = Ubuntu laptop: 10.0.17.25 on the H3C testbed L2 switch (use this for the experiments),
   # 10.0.51.158 on Wi-Fi. edge_host and mqtt.broker_host must always be the same address.
   edge_host: 10.0.17.25
-  cloud_host: 10.0.17.30          # PLACEHOLDER: set the Windows laptop's IP
+  cloud_host: 10.0.51.160         # Windows laptop (Cloud tier)
   mqtt:
     broker_host: 10.0.17.25       # Mosquitto lives on the Edge laptop (same as edge_host)
     broker_port: 1883
