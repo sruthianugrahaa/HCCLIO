@@ -127,10 +127,10 @@ python -m pytest
 For each frame x, the IoT runs ViT-Small → (p_i, c_i, y_i).
 
 1. **c_i ≥ τ_conf (0.80)** → tier `IoT`, result y_i.
-2. Otherwise probe the Edge (E2LM → δ_E2LM,edge) and sample the Rayleigh uplink delay δ_wl.
+2. Otherwise probe the Edge: it returns the measured δ_E2LM,edge and the Rayleigh delay δ_wl it drew for this frame.
 3. **δ_wl + δ_E2LM,edge ≤ τ_lat (500 ms)** → send JPEG + p_i to the Edge. ViT-Base gives p_ES;
    p_ens = 0.44 p_i + 0.56 p_ES. If max p_ens ≥ τ_conf → tier `Edge`. Otherwise the Edge probes
-   the Cloud (E2LM → δ_E2LM,cloud), samples the Gamma backhaul, and cascades JPEG + p_i + p_ES.
+   the Cloud (E2LM → δ_E2LM,cloud) and cascades JPEG + p_i + p_ES; the Cloud draws the Gamma backhaul delay.
    ViT-Large gives p_CS; p_ens = 0.28 p_i + 0.34 p_ES + 0.38 p_CS. If max ≥ τ_conf → `Cloud`,
    else `Fallback-IoT` with y_i.
 4. **Latency gate fails** → straight to the Cloud (Rayleigh hop to the Edge AP + Gamma backhaul +
