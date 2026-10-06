@@ -65,6 +65,7 @@ outputs/
   reports/                  summary.{csv,md}, mu_sweep_<tier>.{csv,png} (written on the laptop)
 scripts/loopback.py         development only: all tiers on one computer with simulated ViTs
 tests/                      development only: pytest suite
+docs/runbook.md             step-by-step: from scratch to results on the three machines
 ```
 
 ## What goes on which machine
