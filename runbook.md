@@ -223,3 +223,12 @@ For the four paper plots: send their specifications and they will be added as on
 | Almost every offloaded frame is `Discard` | `qoe.t_i_ms` is too small; redo step 5 |
 | `pip install torch` fails on the Pi | 32-bit OS; reflash the 64-bit image |
 | Pi can't connect to the broker | Mosquitto is listening only on localhost; redo the `listener 1883 0.0.0.0` line in step 3 |
+
+
+
+
+
+
+
+
+python -c "import socket; s=socket.create_connection(('10.0.17.25',1883),3); print('broker reachable')"
