@@ -61,6 +61,10 @@ class CloudTier:
             log.exception("frame %s failed", msg.get("frame_id"))
 
     def handle(self, msg: dict) -> None:
+        if msg["strategy"] == "ping":  # trace run: MQTT round trip only, no inference
+            self.mqtt.publish(msg["reply_topic"], {"frame_id": msg["frame_id"], "tier": "Cloud",
+                                                   "timings": msg["timings"]})
+            return
         # every frame that reaches the Cloud crossed the wired Edge -> Cloud backhaul
         with self.backhaul_lock:
             msg["timings"]["backhaul_delay_ms"] = self.backhaul.delay_ms()
@@ -70,7 +74,8 @@ class CloudTier:
         self.mqtt.publish(msg["reply_topic"], {
             "frame_id": msg["frame_id"], "tier": r.tier, "prediction_idx": r.prediction,
             "aggregated_conf": r.c_cloud, "route": msg["route"] + r.gate, "path": msg["path"] + "->Cloud",
-            "timings": msg["timings"]})
+            "timings": msg["timings"],
+            **({"p_es": msg.get("p_es"), "p_cs": r.p_CS} if msg["strategy"] == "trace" else {})})
         log.info("frame %4d  %-12s c=%.3f  backhaul=%.1f ms", msg["frame_id"], r.tier, r.c_cloud,
                  msg["timings"]["backhaul_delay_ms"])
 

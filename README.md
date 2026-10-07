@@ -38,6 +38,7 @@ outputs/
     qoe.py                  Q_x per frame + mu_i / mu_ES / mu_CS helpers (docs/mu_model.md)
     results.py              per-frame CSV (outputs/logs/qoe_coclio.csv)
     download_dataset.py     builds the 1000-frame dataset
+    trace.py                one run through every tier per frame, for make_plot_data.py
     requirements.txt
   benchmark_strategies/     PI 4 ONLY: one-line wrappers that run iot_device_tier/main.py --strategy ...
     edge_only/run.py  cloud_only/run.py  local_only/run.py  distributed_benchmark/run.py (DCI)
@@ -61,6 +62,7 @@ outputs/
     requirements.txt        also matplotlib for the plots
   run_mu_sweep.py           LAPTOP: Monte-Carlo QoE vs mu_i / mu_ES / mu_CS on the logged CSVs
   make_report.py            LAPTOP: accuracy / QoE / latency / tier-share table
+  make_plot_data.py         LAPTOP: CSVs for the five paper plots, replayed from logs/trace.csv
   logs/                     qoe_coclio.csv + one qoe_<benchmark>.csv per benchmark (written on the Pi)
   reports/                  summary.{csv,md}, mu_sweep_<tier>.{csv,png} (written on the laptop)
 scripts/loopback.py         development only: all tiers on one computer with simulated ViTs

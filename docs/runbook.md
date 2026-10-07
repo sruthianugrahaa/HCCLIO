@@ -215,7 +215,31 @@ python outputs\run_mu_sweep.py --tier i        # QoE vs mu_i
 
 `summary.md` has accuracy, mean QoE, mean and p95 end-to-end latency, and the share of frames answered at each tier, for every strategy. The `mu_sweep_*.png` files compare all five strategies.
 
-For the four paper plots: send their specifications and they will be added as one script that reads these same CSVs, so the hardware does not need to run again.
+## Step 9: CSV files for the five paper plots
+
+**1. On the Pi, with the Edge and Cloud servers running, do one trace run.** It sends every frame through every tier once and records everything the five strategies need:
+```bash
+python outputs/iot_device_tier/trace.py --dataset ~/HCCLIO
+```
+This writes `outputs/logs/trace.csv` and `trace.npz`. Each frame runs ViT-Small, ViT-Base and ViT-Large once, plus two short MQTT pings.
+
+**2. Copy both files to the laptop and generate the CSVs:**
+```powershell
+scp <pi-user>@mypi4.local:~/HCCLIO/outputs/logs/trace.* C:\HCCLIO\outputs\logs\
+python outputs\make_plot_data.py
+```
+
+This writes the files below to `outputs\reports\plot_data\`, one row per strategy and x value. The strategies are HCCLIO, CPO, Edge only, Cloud only and Local only.
+
+| File | Plot |
+|---|---|
+| `qoe_vs_mu_edge.csv` | Average QoE vs Edge processing rate μ_ES (Edge time ~ Exponential, mean 1/μ_ES) |
+| `qoe_vs_conf_threshold.csv` | Average QoE vs confidence threshold τ_conf (0.50 to 0.95) |
+| `qoe_vs_latency_threshold.csv` | Average QoE vs latency threshold τ_lat (0 to 1000 ms) |
+| `qoe_vs_models.csv` | Average QoE per model set (one trace per set, see below) |
+| `qoe_benchmark_comparison.csv` | QoE, accuracy, latency, discard rate and tier shares per strategy |
+
+For different models: change `models.iot.name` / `.accuracy` (and/or edge, cloud) in `hcclio.yaml`, copy it to all three machines, restart the Edge and Cloud servers, and run `trace.py` again with a label, for example `--label vit_tiny`. `make_plot_data.py` picks up every `trace*.csv` in `logs`.
 
 ---
 

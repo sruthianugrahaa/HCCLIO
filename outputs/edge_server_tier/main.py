@@ -66,8 +66,14 @@ class EdgeTier:
             log.exception("frame %s failed", msg.get("frame_id"))
 
     def handle(self, msg: dict) -> None:
+        if msg["strategy"] == "ping":  # trace run: MQTT round trip only, no inference
+            self.mqtt.publish(msg["reply_topic"], {"frame_id": msg["frame_id"], "tier": "Edge",
+                                                   "timings": msg["timings"]})
+            return
         with self.infer_lock:
             r = edge_inference(self.model, msg["jpeg"], msg.get("p_i"), msg["strategy"], self.cfg)
+        if msg["strategy"] == "trace":  # trace run: always cascade so the Cloud's p_CS is recorded too
+            r.answer_here = False
         msg["timings"]["edge_inference_ms"] = r.edge_inference_ms
         msg["path"] += "->Edge"
 

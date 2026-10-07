@@ -253,6 +253,29 @@ def test_all_strategies_end_to_end(broker, tmp_path_factory):
         assert (out / "reports" / f"mu_sweep_{tier}.csv").exists()
     assert (out / "reports" / "summary.md").exists()
 
+    # the trace replay reproduces every live decision exactly (same models, same gates)
+    pd = load("make_plot_data.py")
+    from common.settings import load_settings
+
+    cfg = load_settings(str(out / "loopback.yaml"))
+    t = pd.load_trace(logs / "trace.csv")
+    e = pd.ensembles(t, cfg)
+    live_files = {"HCCLIO": "qoe_coclio", "CPO": "qoe_distributed_benchmark", "Edge only": "qoe_edge_only",
+                  "Cloud only": "qoe_cloud_only", "Local only": "qoe_local_only"}
+    for s, name in live_files.items():
+        live = rows_of(logs / f"{name}.csv")
+        r = pd.replay(t, e, s, 0.8, 500.0, f(live[0]["T_i_ms"]))
+        assert [x["tier"] for x in live] == list(r["tier"]), s
+        assert [int(x["correct"]) for x in live] == [int(c) for c in r["correct"]], s
+    plot_dir = out / "reports" / "plot_data"
+    sizes = {"qoe_benchmark_comparison": 5, "qoe_vs_mu_edge": 5 * 12, "qoe_vs_conf_threshold": 5 * 10,
+             "qoe_vs_latency_threshold": 5 * 12, "qoe_vs_models": 5}
+    for name, n in sizes.items():
+        rows = rows_of(plot_dir / f"{name}.csv")
+        assert len(rows) == n and {r["strategy"] for r in rows} == {"HCCLIO", "CPO", "Edge only", "Cloud only", "Local only"}
+    mu = [r for r in rows_of(plot_dir / "qoe_vs_mu_edge.csv") if r["strategy"] == "Edge only"]
+    assert f(mu[-1]["mean_QoE"]) > f(mu[0]["mean_QoE"])   # faster Edge -> higher QoE
+
 
 @needs_broker
 def test_latency_gate_fail_goes_direct_to_cloud(broker, tmp_path_factory):

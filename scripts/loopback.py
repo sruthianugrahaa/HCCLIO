@@ -59,7 +59,7 @@ def write_config(path: Path, broker_port: int, log_dir: Path, overrides: dict | 
 
 
 def run(out_dir: Path, frames: int = 60, broker_port: int = 1883, overrides: dict | None = None,
-        strategies=STRATEGIES, analysis: bool = True) -> Path:
+        strategies=STRATEGIES, analysis: bool = True, trace: bool = True) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     cfg_path = write_config(out_dir / "loopback.yaml", broker_port, out_dir, overrides)
     cfg = yaml.safe_load(cfg_path.read_text())
@@ -78,6 +78,10 @@ def run(out_dir: Path, frames: int = 60, broker_port: int = 1883, overrides: dic
             subprocess.run([py, str(OUT / "iot_device_tier" / "main.py"), "--config", str(cfg_path),
                             "--strategy", s, "--dataset", str(ds)], check=True,
                            stdout=subprocess.DEVNULL, stderr=open(out_dir / f"iot_{s}.log", "w"))
+        if trace:
+            subprocess.run([py, str(OUT / "iot_device_tier" / "trace.py"), "--config", str(cfg_path),
+                            "--dataset", str(ds)], check=True,
+                           stdout=subprocess.DEVNULL, stderr=open(out_dir / "iot_trace.log", "w"))
     finally:
         for p in servers:
             p.terminate()
@@ -87,6 +91,9 @@ def run(out_dir: Path, frames: int = 60, broker_port: int = 1883, overrides: dic
         for tier in ("i", "ES", "CS"):
             subprocess.run([py, str(OUT / "run_mu_sweep.py"), "--config", str(cfg_path), "--tier", tier,
                             "--trials", "100"], check=True, stdout=subprocess.DEVNULL)
+        if trace:
+            subprocess.run([py, str(OUT / "make_plot_data.py"), "--config", str(cfg_path), "--trials", "20"],
+                           check=True, stdout=subprocess.DEVNULL)
     return out_dir
 
 
