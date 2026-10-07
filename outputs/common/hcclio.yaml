@@ -56,6 +56,13 @@ qoe:
   # t_i_mode: fixed      -> T_i^comp = t_i_ms
   #           calibrated -> T_i^comp = calib_scale * mean ViT-Small time on the
   #                         first calib_frames frames, measured on the IoT device
+  # e2e_mode: measured -> T_x^E2E = time the IoT device waits for the answer (stopwatch on the
+  #                       Pi, from frame read to answer received: local inference, E2LM probes,
+  #                       MQTT transfer, queueing and remote inference) + the simulated Rayleigh
+  #                       and backhaul delays (simulated, so not in the stopwatch)
+  #           sum      -> T_x^E2E = sum of the logged components (no MQTT transfer or queueing)
+  # Both values are logged (iot_wallclock_ms, e2e_sum_ms); e2e_latency_ms is the one used.
+  e2e_mode: measured
   t_i_mode: fixed
   t_i_ms: 888                     # 2 x ViT-Small mean on the Pi 4 (444 ms, measured 2026-10-06)
   calib_frames: 20

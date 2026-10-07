@@ -15,7 +15,7 @@ COLUMNS = [
     "iot_confidence", "aggregated_conf",
     "local_inference_ms", "wireless_delay_ms", "E2LM_edge_ms", "edge_inference_ms",
     "backhaul_delay_ms", "E2LM_cloud_ms", "cloud_inference_ms",
-    "e2e_latency_ms", "A_x", "Q_x", "tau_conf", "tau_lat_ms", "T_i_ms",
+    "e2e_latency_ms", "iot_wallclock_ms", "e2e_sum_ms", "A_x", "Q_x", "tau_conf", "tau_lat_ms", "T_i_ms",
 ]
 
 

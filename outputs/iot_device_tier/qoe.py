@@ -1,7 +1,9 @@
 """qoe.py - per-frame QoE and the M/M/1 processing-rate (mu) model.
 
-QoE (Ernest et al.)
+QoE (Ernest et al.), computed on the IoT device for every frame
     Q_x = (1 - T_x^E2E / T_i^comp) * A_x          x in {i, ES, CS}
+    T_x^E2E = IoT stopwatch (frame read -> answer received) + simulated Rayleigh + backhaul
+              (qoe.e2e_mode: measured), or the sum of the logged components (sum)
     Q_x = 0 and tier = "Discard"                    if T_x^E2E >= T_i^comp
     A_x = pretrained accuracy of the tier that answered (0.75 / 0.80 / 0.85;
           Fallback-IoT uses A_i)
@@ -38,6 +40,14 @@ def qoe(e2e_ms: float, t_i_ms: float, a_x: float) -> tuple[float, bool]:
     if e2e_ms >= t_i_ms:
         return 0.0, True
     return (1.0 - e2e_ms / t_i_ms) * a_x, False
+
+
+SIMULATED_KEYS = ("wireless_delay_ms", "backhaul_delay_ms")  # never physically waited for
+
+
+def iot_e2e_ms(wallclock_ms: float, t: dict) -> float:
+    """T_x^E2E as the IoT device experiences it: its own stopwatch + the simulated link delays."""
+    return float(wallclock_ms) + sum(float(t.get(k) or 0.0) for k in SIMULATED_KEYS)
 
 
 def e2e_latency_ms(t: dict) -> float:

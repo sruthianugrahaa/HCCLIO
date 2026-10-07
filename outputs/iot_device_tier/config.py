@@ -40,6 +40,7 @@ class IoTConfig:
     tau_lat_ms: float          # 500
     accuracy: dict             # A_x per answering tier
     # QoE
+    e2e_mode: str              # measured (IoT-device stopwatch) | sum
     t_i_mode: str
     t_i_ms: float
     calib_frames: int
@@ -65,7 +66,7 @@ def load(path: str | None = None, backend: str | None = None) -> IoTConfig:
         tau_conf=float(c["gates"]["tau_conf"]), tau_lat_ms=float(c["gates"]["tau_lat_ms"]),
         accuracy={"IoT": float(mod["iot"]["accuracy"]), "Fallback-IoT": float(mod["iot"]["accuracy"]),
                   "Edge": float(mod["edge"]["accuracy"]), "Cloud": float(mod["cloud"]["accuracy"])},
-        t_i_mode=q["t_i_mode"], t_i_ms=float(q["t_i_ms"]), calib_frames=int(q["calib_frames"]),
+        e2e_mode=q.get("e2e_mode", "measured"), t_i_mode=q["t_i_mode"], t_i_ms=float(q["t_i_ms"]), calib_frames=int(q["calib_frames"]),
         calib_scale=float(q["calib_scale"]),
         dataset_root=c["dataset"]["root"], n_frames=int(c["dataset"]["n_frames"]),
         csv_path=resolve_path(c["logging"]["log_dir"]) / c["logging"]["hcclio_csv"], raw=c,

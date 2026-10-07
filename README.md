@@ -186,8 +186,13 @@ For each frame x, the IoT runs ViT-Small → (p_i, c_i, y_i).
    δ_E2LM,cloud probed from the IoT). p_ens = w_i p_i + w_CS p_CS with the cloud weights
    renormalised to sum to 1 (0.424 / 0.576); same Cloud / Fallback-IoT decision.
 
-**E2E latency** is the sum of the logged components: measured inference times at each tier, the
-measured E2LM probe delays, and the simulated Rayleigh and backhaul delays.
+**E2E latency is measured from the IoT device's side.** QoE is computed on the Pi for every frame.
+T_x^E2E is the Pi's own stopwatch, from reading the frame to receiving the answer. That covers
+local inference, E2LM probes, MQTT transfer of the JPEG and the answer, queueing, and Edge/Cloud
+inference. The simulated Rayleigh and backhaul delays are added on top, because they are not
+physically waited for (`qoe.e2e_mode: measured`, the default). Every row also logs
+`iot_wallclock_ms` and `e2e_sum_ms`, the plain sum of the logged components. `e2e_mode: sum` uses
+that sum instead.
 
 **QoE** (Ernest et al.): Q_x = (1 − T_x^E2E / T_i^comp) · A_x, and `Discard` with Q_x = 0 when
 T_x^E2E ≥ T_i^comp. A_x is the pretrained accuracy of the tier that answered (Fallback-IoT uses A_i).
@@ -248,7 +253,10 @@ per μ and per strategy.
 `frame_id, timestamp, image_file, ground_truth_idx, ground_truth_name, tier, route, path,
 prediction_idx, class_name, correct, iot_confidence, aggregated_conf, local_inference_ms,
 wireless_delay_ms, E2LM_edge_ms, edge_inference_ms, backhaul_delay_ms, E2LM_cloud_ms,
-cloud_inference_ms, e2e_latency_ms, A_x, Q_x, tau_conf, tau_lat_ms, T_i_ms`
+cloud_inference_ms, e2e_latency_ms, iot_wallclock_ms, e2e_sum_ms, A_x, Q_x, tau_conf, tau_lat_ms, T_i_ms`
+
+`e2e_latency_ms` is the T_x^E2E used for Q_x: the IoT stopwatch `iot_wallclock_ms` plus the
+simulated wireless and backhaul delays.
 
 `tier` ∈ {IoT, Edge, Cloud, Fallback-IoT, Discard, Timeout}; `route` records each gate outcome
 (e.g. `iot_conf_fail|lat_pass|edge_conf_fail|cloud_conf_pass`); `path` the hops

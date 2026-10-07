@@ -55,7 +55,7 @@ HCCLIO/
 │   │   ├── e2lm.py                E2LM delay to Edge / Cloud; receives the Edge's Rayleigh delay
 │   │   ├── mqtt_client.py         sends frames, waits for the answer
 │   │   ├── qoe.py                 Q_x per frame, μ_i / μ_ES / μ_CS helpers
-│   │   ├── results.py             one CSV row per frame (26 columns)
+│   │   ├── results.py             one CSV row per frame (28 columns)
 │   │   ├── download_dataset.py    builds the 1000-frame dataset
 │   │   └── requirements.txt
 │   ├── benchmark_strategies/      → PI ONLY (each run.py = main.py --strategy …)

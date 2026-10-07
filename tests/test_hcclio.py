@@ -104,6 +104,7 @@ def test_qoe_and_mu_model():
     assert q.qoe(250, 1000, 0.8) == (pytest.approx(0.6), False)
     assert q.qoe(1000, 1000, 0.8) == (0.0, True)
     assert q.e2e_latency_ms({"local_inference_ms": 10, "wireless_delay_ms": 2.5, "cloud_inference_ms": None}) == 12.5
+    assert q.iot_e2e_ms(100.0, {"local_inference_ms": 40, "wireless_delay_ms": 2.5, "backhaul_delay_ms": 7.5}) == 110.0
     mu = q.service_time_s(q.complexity_from_model("i", 1e6), 1e6, q.rate_from_measurement("i", 200.0))
     assert mu == pytest.approx(0.2)
     assert q.mean_system_time_s(0.2, 1.0, 2.0) == pytest.approx(1 / 3)
@@ -233,7 +234,11 @@ def test_all_strategies_end_to_end(broker, tmp_path_factory):
         assert len(rows) == 60, name
         assert not {r["tier"] for r in rows} & {"Timeout"}, name
         for r in rows:
-            assert f(r["e2e_latency_ms"]) == pytest.approx(sum(f(r[c]) for c in delay_cols), abs=1e-3)
+            assert f(r["e2e_sum_ms"]) == pytest.approx(sum(f(r[c]) for c in delay_cols), abs=1e-3)
+            # QoE uses the IoT device's own stopwatch + the simulated link delays
+            sim = f(r["wireless_delay_ms"]) + f(r["backhaul_delay_ms"])
+            assert f(r["e2e_latency_ms"]) == pytest.approx(f(r["iot_wallclock_ms"]) + sim, abs=1e-3)
+            assert f(r["e2e_latency_ms"]) >= f(r["e2e_sum_ms"]) - 1.0   # real waiting >= its measured parts
             assert (f(r["backhaul_delay_ms"]) > 0) == ("Cloud" in r["path"])   # drawn by the Cloud
             if r["path"] != "IoT":
                 assert f(r["wireless_delay_ms"]) > 0                            # sent by the Edge

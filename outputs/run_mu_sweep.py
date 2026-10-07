@@ -60,6 +60,10 @@ def load_rows(path: str | Path) -> dict[str, np.ndarray]:
     if not rows:
         raise ValueError(f"{path} has no rows")
     out = {c: np.array([_f(r.get(c)) for r in rows]) for c in DELAY_COLUMNS + ["A_x", "T_i_ms", "correct"]}
+    # the E2E the run actually used (IoT stopwatch in e2e_mode measured); older logs: sum of parts
+    has_e2e = all(r.get("e2e_latency_ms") not in (None, "") for r in rows)
+    out["e2e_latency_ms"] = (np.array([_f(r["e2e_latency_ms"]) for r in rows]) if has_e2e
+                             else sum(out[c] for c in DELAY_COLUMNS))
     out["path"] = np.array([r.get("path", "") for r in rows])
     return out
 
@@ -86,7 +90,7 @@ def sweep(rows: dict, mu_values, tier: str = "ES", trials: int = 500, model: str
     else:
         uses = np.char.find(rows["path"].astype(str), "Edge" if tier == "ES" else "Cloud") >= 0
     p_x = float(uses.mean())  # P_x: share of frames that reach tier x
-    base = sum(rows[c] for c in DELAY_COLUMNS) - np.where(uses, rows[col], 0.0)
+    base = rows["e2e_latency_ms"] - np.where(uses, rows[col], 0.0)  # everything except tier x's time
     t_i = np.full(base.shape, t_i_ms) if t_i_ms else rows["T_i_ms"]
     a_x = rows["A_x"]
     out = []

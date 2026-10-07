@@ -13,7 +13,7 @@ For each frame x:
                         no  -> e2lm.py probes the Cloud (delta_E2LM_cloud),
                                mqtt_client.py: JPEG + p_i -> hcclio/cloud/request
                                (the Cloud adds the backhaul delay)
-  6. the answer comes back on the IoT reply topic; qoe.py computes T_x^E2E and Q_x;
+  6. the answer comes back on the IoT reply topic; the IoT stopwatch gives T_x^E2E and qoe.py Q_x;
      results.py appends the row to outputs/logs/qoe_coclio.csv
 
 Settings come from config.py (common/hcclio.yaml). Start the Edge
@@ -45,7 +45,7 @@ from e2lm import E2LM  # noqa: E402
 from inference import ViTSmall  # noqa: E402
 from load_dataset import load_dataset  # noqa: E402
 from mqtt_client import MqttClient  # noqa: E402
-from qoe import e2e_latency_ms, qoe  # noqa: E402
+from qoe import e2e_latency_ms, iot_e2e_ms, qoe  # noqa: E402
 from results import ResultsCSV, summarise  # noqa: E402
 
 from common.classes import class_name  # noqa: E402
@@ -88,6 +88,7 @@ class IoTTier:
     def process(self, frame) -> dict:
         cfg, strategy = self.cfg, self.strategy
         timings: dict = {}
+        t0 = time.perf_counter()  # the IoT device's stopwatch: frame read -> answer received
         # 2. local inference (skipped by the edge_only / cloud_only benchmarks)
         local = self.vit.infer(frame.jpeg) if self.vit else None
         if local:
@@ -127,9 +128,12 @@ class IoTTier:
                           "route": msg["route"] + "|timeout", "path": "IoT", "timings": timings}
             timings = answer["timings"]
 
-        # 6. E2E latency, QoE, CSV row
+        # 6. E2E latency as the IoT device experienced it, QoE, CSV row
+        wallclock = (time.perf_counter() - t0) * 1000.0
         tier = answer["tier"]
-        e2e = e2e_latency_ms(timings)
+        e2e_sum = e2e_latency_ms(timings)
+        e2e_meas = iot_e2e_ms(wallclock, timings)
+        e2e = e2e_meas if cfg.e2e_mode == "measured" else e2e_sum
         a_x = cfg.accuracy.get(tier, 0.0)
         q, discarded = qoe(e2e, self.t_i_ms, a_x)
         pred = int(answer["prediction_idx"])
@@ -141,7 +145,8 @@ class IoTTier:
             "prediction_idx": pred, "class_name": class_name(pred) if pred >= 0 else "",
             "correct": int(pred == frame.ground_truth_idx),
             "iot_confidence": local.c_i if local else "", "aggregated_conf": float(answer["aggregated_conf"]),
-            "e2e_latency_ms": e2e, "A_x": a_x, "Q_x": q,
+            "e2e_latency_ms": e2e, "iot_wallclock_ms": wallclock, "e2e_sum_ms": e2e_sum,
+            "A_x": a_x, "Q_x": q,
             "tau_conf": cfg.tau_conf, "tau_lat_ms": cfg.tau_lat_ms, "T_i_ms": self.t_i_ms,
         }
         row.update({k: float(v) for k, v in timings.items()})
