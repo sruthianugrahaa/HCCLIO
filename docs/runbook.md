@@ -238,6 +238,9 @@ This writes the files below to `outputs\reports\plot_data\`, one row per strateg
 | `qoe_vs_latency_threshold.csv` | Average QoE vs latency threshold τ_lat (0 to 1000 ms) |
 | `qoe_vs_models.csv` | Average QoE per model set (one trace per set, see below) |
 | `qoe_benchmark_comparison.csv` | QoE, accuracy, latency, discard rate and tier shares per strategy |
+| `per_frame/per_frame_<strategy>.csv` | One row per image: tier, path, prediction, correct, confidences, every delay on the path taken, T_E2E, A_x, Q_x |
+
+**Re-scoring per image at another Edge rate:** in a per-frame file, for rows where `edge_inference_ms` is filled in, new T_E2E = `e2e_latency_ms` − `edge_inference_ms` + new Edge time. Then Q = (1 − T_E2E / `T_i_ms`) · `A_x`, or 0 if T_E2E ≥ `T_i_ms`. Cloud rows work the same way with `cloud_inference_ms`.
 
 For different models: change `models.iot.name` / `.accuracy` (and/or edge, cloud) in `hcclio.yaml`, copy it to all three machines, restart the Edge and Cloud servers, and run `trace.py` again with a label, for example `--label vit_tiny`. `make_plot_data.py` picks up every `trace*.csv` in `logs`.
 

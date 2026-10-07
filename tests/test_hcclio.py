@@ -273,6 +273,12 @@ def test_all_strategies_end_to_end(broker, tmp_path_factory):
     for name, n in sizes.items():
         rows = rows_of(plot_dir / f"{name}.csv")
         assert len(rows) == n and {r["strategy"] for r in rows} == {"HCCLIO", "CPO", "Edge only", "Cloud only", "Local only"}
+    for name in ("hcclio", "cpo", "edge_only", "cloud_only", "local_only"):
+        rows = rows_of(plot_dir / "per_frame" / f"per_frame_{name}.csv")
+        assert len(rows) == 60
+        for r in rows:  # the delays on the path taken add up to T_E2E
+            parts = [c for c in r if c.endswith("_ms") and c not in ("e2e_latency_ms", "T_i_ms", "tau_lat_ms")]
+            assert sum(f(r[c]) for c in parts if r[c] != "") == pytest.approx(f(r["e2e_latency_ms"]), abs=1e-2)
     mu = [r for r in rows_of(plot_dir / "qoe_vs_mu_edge.csv") if r["strategy"] == "Edge only"]
     assert f(mu[-1]["mean_QoE"]) > f(mu[0]["mean_QoE"])   # faster Edge -> higher QoE
 

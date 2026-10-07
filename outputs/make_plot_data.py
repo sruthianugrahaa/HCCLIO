@@ -24,6 +24,10 @@ Output (outputs/reports/plot_data/), one row per strategy and x value:
   qoe_vs_latency_threshold.csv  plot 3: Avg QoE vs latency threshold tau_lat
   qoe_vs_models.csv             plot 4: Avg QoE per model set (one trace file per set)
   qoe_benchmark_comparison.csv  plot 5: QoE, accuracy, latency, discards per strategy
+  per_frame/per_frame_<strategy>.csv
+                                one row per image: tier, path, prediction, correct,
+                                confidences, every delay on the path taken (incl. the
+                                MQTT transfer the IoT stopwatch saw), T_E2E, A_x, Q_x
 
     python outputs/make_plot_data.py                      # every logs/trace*.csv
     python outputs/make_plot_data.py --trials 500
@@ -63,6 +67,8 @@ def load_trace(csv_path: Path) -> dict:
     t.update(p_i=npz["p_i"][ok].astype(np.float64), p_es=npz["p_es"][ok].astype(np.float64),
              p_cs=npz["p_cs"][ok].astype(np.float64), n_failed=int((~ok).sum()))
     t["models"] = {k: rows[0][f"model_{k}"] for k in ("iot", "edge", "cloud")}
+    t["frame_id"] = np.array([int(r["frame_id"]) for r in rows])[ok]
+    t["image_file"] = np.array([r["image_file"] for r in rows])[ok]
     # transfer overheads seen by the IoT stopwatch (MQTT up + down, no inference)
     t["ovh_edge"] = np.nan_to_num(t["edge_ping_ms"])
     t["ovh_direct"] = np.nan_to_num(t["cloud_ping_ms"])
@@ -103,14 +109,15 @@ def replay(t: dict, e: dict, strategy: str, tau_conf: float, tau_lat: float, t_i
     T_dir = loc + e2e_e + wl + e2c + bh + cloud_t + t["ovh_direct"]
 
     tier = np.empty(n, dtype=object)
+    path = np.empty(n, dtype=object)
     pred = np.zeros(n, dtype=int)
     T = np.zeros(n)
     if strategy == "Local only":
-        tier[:], pred[:], T[:] = "IoT", e["y_i"], loc
+        tier[:], path[:], pred[:], T[:] = "IoT", "IoT", e["y_i"], loc
     elif strategy == "Edge only":
-        tier[:], pred[:], T[:] = "Edge", e["y_es"], e2e_e + wl + edge_t + t["ovh_edge"]
+        tier[:], path[:], pred[:], T[:] = "Edge", "Edge only", e["y_es"], e2e_e + wl + edge_t + t["ovh_edge"]
     elif strategy == "Cloud only":
-        tier[:], pred[:], T[:] = "Cloud", e["y_cs"], e2c + wl + bh + cloud_t + t["ovh_direct"]
+        tier[:], path[:], pred[:], T[:] = "Cloud", "Cloud only", e["y_cs"], e2c + wl + bh + cloud_t + t["ovh_direct"]
     else:
         ce, ye, cc, yc = e["c_e"], e["y_e"], e["c_c"], e["y_c"]
         if strategy == "CPO" and not e["cpo_ensemble"]:
@@ -119,21 +126,59 @@ def replay(t: dict, e: dict, strategy: str, tau_conf: float, tau_lat: float, t_i
         to_edge = np.ones(n, bool) if strategy == "CPO" else (wl + e2e_e <= tau_lat)
         edge_ok, casc_ok, dir_ok = ce >= tau_conf, cc >= tau_conf, e["c_d"] >= tau_conf
         cases = [
-            (local_ok, "IoT", e["y_i"], loc),
-            (~local_ok & to_edge & edge_ok, "Edge", ye, T_edge),
-            (~local_ok & to_edge & ~edge_ok & casc_ok, "Cloud", yc, T_casc),
-            (~local_ok & to_edge & ~edge_ok & ~casc_ok, "Fallback-IoT", e["y_i"], T_casc),
-            (~local_ok & ~to_edge & dir_ok, "Cloud", e["y_d"], T_dir),
-            (~local_ok & ~to_edge & ~dir_ok, "Fallback-IoT", e["y_i"], T_dir),
+            (local_ok, "IoT", "IoT", e["y_i"], loc),
+            (~local_ok & to_edge & edge_ok, "Edge", "IoT->Edge", ye, T_edge),
+            (~local_ok & to_edge & ~edge_ok & casc_ok, "Cloud", "IoT->Edge->Cloud", yc, T_casc),
+            (~local_ok & to_edge & ~edge_ok & ~casc_ok, "Fallback-IoT", "IoT->Edge->Cloud", e["y_i"], T_casc),
+            (~local_ok & ~to_edge & dir_ok, "Cloud", "IoT->Cloud", e["y_d"], T_dir),
+            (~local_ok & ~to_edge & ~dir_ok, "Fallback-IoT", "IoT->Cloud", e["y_i"], T_dir),
         ]
-        for m, name, y, tt in cases:
-            tier[m], pred[m], T[m] = name, y[m], tt[m]
+        for m, name, pth, y, tt in cases:
+            tier[m], path[m], pred[m], T[m] = name, pth, y[m], tt[m]
 
     a = np.where(tier == "Edge", t["A_ES"], np.where(tier == "Cloud", t["A_CS"], t["A_i"]))
     discard = T >= t_i
     q = np.where(discard, 0.0, (1.0 - T / t_i) * a)
     tier = np.where(discard, "Discard", tier)
-    return {"Q": q, "T": T, "tier": tier, "correct": pred == t["ground_truth_idx"].astype(int), "discard": discard}
+    return {"Q": q, "T": T, "tier": tier, "path": path, "pred": pred, "A": a,
+            "correct": pred == t["ground_truth_idx"].astype(int), "discard": discard}
+
+
+# which delay components each path's T_E2E is made of (others are left empty in the per-frame CSV)
+PATH_PARTS = {
+    "IoT": ["local_inference_ms"],
+    "IoT->Edge": ["local_inference_ms", "E2LM_edge_ms", "wireless_delay_ms", "edge_inference_ms", "ovh_edge"],
+    "IoT->Edge->Cloud": ["local_inference_ms", "E2LM_edge_ms", "wireless_delay_ms", "edge_inference_ms",
+                         "E2LM_cloud_edge_ms", "backhaul_delay_ms", "cloud_inference_ms", "ovh_cascade"],
+    "IoT->Cloud": ["local_inference_ms", "E2LM_edge_ms", "wireless_delay_ms", "E2LM_cloud_ms",
+                   "backhaul_delay_ms", "cloud_inference_ms", "ovh_direct"],
+    "Edge only": ["E2LM_edge_ms", "wireless_delay_ms", "edge_inference_ms", "ovh_edge"],
+    "Cloud only": ["E2LM_cloud_ms", "wireless_delay_ms", "backhaul_delay_ms", "cloud_inference_ms", "ovh_direct"],
+}
+PART_COLUMNS = ["local_inference_ms", "E2LM_edge_ms", "wireless_delay_ms", "edge_inference_ms",
+                "E2LM_cloud_edge_ms", "E2LM_cloud_ms", "backhaul_delay_ms", "cloud_inference_ms"]
+OVH = {"ovh_edge", "ovh_cascade", "ovh_direct"}
+
+
+def per_frame_rows(t: dict, e: dict, strategy: str, r: dict, tau_conf: float, tau_lat: float, t_i: float) -> list[dict]:
+    """One row per image: decision, every delay on the path taken, T_E2E and Q."""
+    rows = []
+    for k in range(len(r["Q"])):
+        parts = PATH_PARTS[r["path"][k]]
+        row = {"frame_id": int(t["frame_id"][k]), "image_file": t["image_file"][k],
+               "ground_truth_idx": int(t["ground_truth_idx"][k]), "strategy": strategy,
+               "tier": r["tier"][k], "path": r["path"][k], "prediction_idx": int(r["pred"][k]),
+               "correct": int(r["correct"][k]),
+               "c_i": float(e["c_i"][k]), "c_edge_ensemble": float(e["c_e"][k]),
+               "c_cloud_ensemble": float(e["c_c"][k]), "c_cloud_direct": float(e["c_d"][k])}
+        for c in PART_COLUMNS:
+            row[c] = float(t[c][k]) if c in parts else ""
+        ovh = [p for p in parts if p in OVH]
+        row["mqtt_transfer_ms"] = float(t[ovh[0]][k]) if ovh else ""
+        row.update({"e2e_latency_ms": float(r["T"][k]), "A_x": float(r["A"][k]), "T_i_ms": t_i,
+                    "Q_x": float(r["Q"][k]), "tau_conf": tau_conf, "tau_lat_ms": tau_lat})
+        rows.append(row)
+    return rows
 
 
 def metrics(r: dict) -> dict:
@@ -178,6 +223,13 @@ def make_all(traces: dict[str, Path], cfg: dict, out_dir: Path, trials: int = 20
     rows = [{"strategy": s, "frames": n, "tau_conf": tau_c, "tau_lat_ms": tau_l, "T_i_ms": t_i,
              **metrics(replay(t, e, s, tau_c, tau_l, t_i))} for s in STRATEGIES]
     files.append(write(out_dir / "qoe_benchmark_comparison.csv", rows))
+
+    # per image, per strategy (1000 rows each) at the configured gates
+    for s in STRATEGIES:
+        r = replay(t, e, s, tau_c, tau_l, t_i)
+        name = s.lower().replace(" ", "_")
+        files.append(write(out_dir / "per_frame" / f"per_frame_{name}.csv",
+                           per_frame_rows(t, e, s, r, tau_c, tau_l, t_i)))
 
     # plot 1: QoE vs mu_ES, Edge inference time ~ Exp(mean 1/mu_ES)
     rng = np.random.default_rng(seed)
