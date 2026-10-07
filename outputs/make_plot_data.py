@@ -18,8 +18,8 @@ QoE is from the IoT device's side, as in the live runs:
   Q     = (1 - T_E2E / T_i^comp) * A_x,  Q = 0 (Discard) if T_E2E >= T_i^comp
 
 Output (outputs/reports/plot_data/), one row per strategy and x value:
-  qoe_vs_mu_edge.csv            plot 1: Avg QoE vs Edge processing rate mu_ES
-                                (Edge inference time ~ Exponential, mean 1/mu_ES)
+  qoe_vs_mu_edge.csv            plot 1: Avg QoE vs Edge processing rate mu_ES, 0.01-20 tasks/s
+                                (the Edge is an M/M/1 queue, see edge_queue below)
   qoe_vs_conf_threshold.csv     plot 2: Avg QoE vs confidence threshold tau_conf
   qoe_vs_latency_threshold.csv  plot 3: Avg QoE vs latency threshold tau_lat
   qoe_vs_models.csv             plot 4: Avg QoE per model set (one trace file per set)
@@ -31,6 +31,17 @@ Output (outputs/reports/plot_data/), one row per strategy and x value:
 
     python outputs/make_plot_data.py                      # every logs/trace*.csv
     python outputs/make_plot_data.py --trials 500
+    python outputs/make_plot_data.py --edge-model exp     # Edge time ~ Exp(1/mu), no queue, gate unaware
+
+Edge model for plot 1 (--edge-model mm1, the default)
+  Frames reach the Edge at lambda_ES = arrival_rate * (share of frames the strategy
+  sends to the Edge); arrival_rate is mu_sweep.arrival_rate in hcclio.yaml.
+  * Time a frame spends at the Edge (queue + ViT-Base) ~ Exp(mean 1/(mu - lambda_ES));
+    if mu <= lambda_ES the queue grows without bound and those frames are discarded.
+  * The E2LM probe to the Edge waits in the same queue, so HCCLIO's latency gate sees
+    delta_wl + delta_E2LM + W_q, with W_q = lambda_ES / (mu (mu - lambda_ES)).
+    HCCLIO's own lambda_ES depends on how many frames pass that gate, so it is solved
+    as a fixed point. CPO and Edge only have no latency gate and keep sending to the Edge.
 """
 
 from __future__ import annotations
@@ -46,6 +57,8 @@ STRATEGIES = ["HCCLIO", "CPO", "Edge only", "Cloud only", "Local only"]
 TAU_CONF = [round(x, 2) for x in np.arange(0.50, 0.951, 0.05)]
 TAU_LAT_MS = [0, 10, 25, 50, 75, 100, 150, 200, 300, 500, 750, 1000]
 TIERS = ["IoT", "Edge", "Cloud", "Fallback-IoT", "Discard"]
+MU_ES = [float(f"{x:.4g}") for x in np.geomspace(0.01, 20, 25)]   # tasks/s
+UNSTABLE_MS = 1e7   # time at an Edge whose queue never empties (always a Discard)
 
 
 def _f(v) -> float:
@@ -98,8 +111,11 @@ def ensembles(t: dict, cfg: dict) -> dict:
 
 
 def replay(t: dict, e: dict, strategy: str, tau_conf: float, tau_lat: float, t_i: float,
-           edge_ms: np.ndarray | None = None) -> dict:
-    """Per-frame tier, prediction and T_E2E for one strategy and one parameter setting."""
+           edge_ms: np.ndarray | None = None, edge_wait_ms: float = 0.0) -> dict:
+    """Per-frame tier, prediction and T_E2E for one strategy and one parameter setting.
+
+    edge_ms replaces the measured Edge time; edge_wait_ms is the Edge queueing delay the
+    E2LM probe sees, added to HCCLIO's latency-gate signal."""
     n = len(t["local_inference_ms"])
     edge_t = t["edge_inference_ms"] if edge_ms is None else edge_ms
     loc, e2e_e, wl = t["local_inference_ms"], t["E2LM_edge_ms"], t["wireless_delay_ms"]
@@ -123,7 +139,7 @@ def replay(t: dict, e: dict, strategy: str, tau_conf: float, tau_lat: float, t_i
         if strategy == "CPO" and not e["cpo_ensemble"]:
             ce, ye, cc, yc = e["c_es"], e["y_es"], e["c_cs"], e["y_cs"]
         local_ok = e["c_i"] >= tau_conf
-        to_edge = np.ones(n, bool) if strategy == "CPO" else (wl + e2e_e <= tau_lat)
+        to_edge = np.ones(n, bool) if strategy == "CPO" else (wl + e2e_e + edge_wait_ms <= tau_lat)
         edge_ok, casc_ok, dir_ok = ce >= tau_conf, cc >= tau_conf, e["c_d"] >= tau_conf
         cases = [
             (local_ok, "IoT", "IoT", e["y_i"], loc),
@@ -158,6 +174,36 @@ PATH_PARTS = {
 PART_COLUMNS = ["local_inference_ms", "E2LM_edge_ms", "wireless_delay_ms", "edge_inference_ms",
                 "E2LM_cloud_edge_ms", "E2LM_cloud_ms", "backhaul_delay_ms", "cloud_inference_ms"]
 OVH = {"ovh_edge", "ovh_cascade", "ovh_direct"}
+
+
+def edge_wait_ms(mu: float, lam: float) -> float:
+    """M/M/1 mean waiting time in the queue (ms) at service rate mu, arrival rate lam (per s)."""
+    return 1000.0 * lam / (mu * (mu - lam)) if lam < mu else float("inf")
+
+
+def edge_queue(t: dict, e: dict, strategy: str, mu: float, arrival_rate: float, tau_conf: float,
+               tau_lat: float) -> tuple[float, float]:
+    """(lambda_ES, W_q ms) at the Edge for one strategy at Edge rate mu (M/M/1)."""
+    if strategy in ("Local only", "Cloud only"):
+        return 0.0, 0.0
+    if strategy == "Edge only":
+        lam = arrival_rate
+        return lam, edge_wait_ms(mu, lam)
+    offload = e["c_i"] < tau_conf
+    if strategy == "CPO":
+        lam = arrival_rate * float(offload.mean())
+        return lam, edge_wait_ms(mu, lam)
+    gate = t["wireless_delay_ms"] + t["E2LM_edge_ms"]
+
+    def share(lam):  # share of frames HCCLIO sends to the Edge when it carries lam
+        return float((offload & (gate + edge_wait_ms(mu, lam) <= tau_lat)).mean())
+
+    lo, hi = 0.0, share(0.0)  # share(f * arrival_rate) - f falls as f grows: bisect
+    for _ in range(50):
+        mid = 0.5 * (lo + hi)
+        lo, hi = (mid, hi) if share(mid * arrival_rate) > mid else (lo, mid)
+    lam = lo * arrival_rate
+    return lam, edge_wait_ms(mu, lam)
 
 
 def per_frame_rows(t: dict, e: dict, strategy: str, r: dict, tau_conf: float, tau_lat: float, t_i: float) -> list[dict]:
@@ -207,10 +253,11 @@ def write(path: Path, rows: list[dict]) -> Path:
 
 
 def make_all(traces: dict[str, Path], cfg: dict, out_dir: Path, trials: int = 200, seed: int = 2026,
-             mu_values=None) -> list[Path]:
+             mu_values=None, edge_model: str = "mm1") -> list[Path]:
     g, q = cfg["gates"], cfg["qoe"]
     tau_c, tau_l = float(g["tau_conf"]), float(g["tau_lat_ms"])
-    mu_values = mu_values or cfg["mu_sweep"]["mu_values"]
+    mu_values = mu_values or MU_ES
+    arrival = float(cfg["mu_sweep"].get("arrival_rate", 1.0))
     main_label = next(iter(traces))
     loaded = {lab: load_trace(p) for lab, p in traces.items()}
     t = loaded[main_label]
@@ -231,18 +278,31 @@ def make_all(traces: dict[str, Path], cfg: dict, out_dir: Path, trials: int = 20
         files.append(write(out_dir / "per_frame" / f"per_frame_{name}.csv",
                            per_frame_rows(t, e, s, r, tau_c, tau_l, t_i)))
 
-    # plot 1: QoE vs mu_ES, Edge inference time ~ Exp(mean 1/mu_ES)
+    # plot 1: QoE vs mu_ES (M/M/1 Edge by default, see the module docstring)
     rng = np.random.default_rng(seed)
     rows = []
     for mu in mu_values:
-        samples = [rng.exponential(1000.0 / float(mu), n) for _ in range(trials)]
+        mu = float(mu)
+        unit = [rng.exponential(1.0, n) for _ in range(trials)]
         for s in STRATEGIES:
-            per = [replay(t, e, s, tau_c, tau_l, t_i, edge_ms=x) for x in samples]
+            if edge_model == "mm1":
+                lam, wq = edge_queue(t, e, s, mu, arrival, tau_c, tau_l)
+                mean_ms = 1000.0 / (mu - lam) if lam < mu else UNSTABLE_MS
+                samples = [np.minimum(u * mean_ms, UNSTABLE_MS) if lam < mu else np.full(n, UNSTABLE_MS)
+                           for u in unit]
+                wq = min(wq, UNSTABLE_MS)
+            else:
+                lam, wq, mean_ms = 0.0, 0.0, 1000.0 / mu
+                samples = [u * mean_ms for u in unit]
+            per = [replay(t, e, s, tau_c, tau_l, t_i, edge_ms=x, edge_wait_ms=wq) for x in samples]
             qs = np.array([r["Q"].mean() for r in per])
-            rows.append({"strategy": s, "mu_ES": float(mu), "mean_edge_service_ms": 1000.0 / float(mu),
+            rows.append({"strategy": s, "mu_ES": mu, "edge_model": edge_model, "lambda_ES": lam,
+                         "edge_wait_ms": wq, "mean_edge_time_ms": mean_ms if s not in ("Local only", "Cloud only") else 0.0,
                          "mean_QoE": float(qs.mean()),
                          "ci95_QoE": float(1.96 * qs.std(ddof=1) / np.sqrt(trials)) if trials > 1 else 0.0,
                          "discard_rate": float(np.mean([r["discard"].mean() for r in per])),
+                         "share_Edge_path": float(np.mean([np.isin(r["path"], ["IoT->Edge", "IoT->Edge->Cloud",
+                                                                                "Edge only"]).mean() for r in per])),
                          "mean_e2e_ms": float(np.mean([r["T"].mean() for r in per])), "trials": trials})
     files.append(write(out_dir / "qoe_vs_mu_edge.csv", rows))
 
@@ -295,6 +355,8 @@ if __name__ == "__main__":
     ap.add_argument("--config", default=None)
     ap.add_argument("--trials", type=int, default=200, help="Monte-Carlo trials per mu_ES value")
     ap.add_argument("--out-dir", default=None)
+    ap.add_argument("--edge-model", choices=["mm1", "exp"], default="mm1",
+                    help="plot 1: mm1 = Edge queue, HCCLIO gate sees its wait (default); exp = no queue")
     a = ap.parse_args()
     cfg = load_settings(a.config)
     log_dir = resolve_path(cfg["logging"]["log_dir"])
@@ -303,5 +365,5 @@ if __name__ == "__main__":
         sys.exit(f"no trace*.csv + .npz in {log_dir}: run iot_device_tier/trace.py on the Pi and copy logs/ here")
     out = Path(a.out_dir) if a.out_dir else resolve_path(cfg["logging"]["report_dir"]) / "plot_data"
     print("traces:", ", ".join(traces))
-    for f in make_all(traces, cfg, out, a.trials, int(cfg["mu_sweep"]["seed"])):
+    for f in make_all(traces, cfg, out, a.trials, int(cfg["mu_sweep"]["seed"]), edge_model=a.edge_model):
         print("wrote", f)

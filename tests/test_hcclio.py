@@ -268,7 +268,7 @@ def test_all_strategies_end_to_end(broker, tmp_path_factory):
         assert [x["tier"] for x in live] == list(r["tier"]), s
         assert [int(x["correct"]) for x in live] == [int(c) for c in r["correct"]], s
     plot_dir = out / "reports" / "plot_data"
-    sizes = {"qoe_benchmark_comparison": 5, "qoe_vs_mu_edge": 5 * 12, "qoe_vs_conf_threshold": 5 * 10,
+    sizes = {"qoe_benchmark_comparison": 5, "qoe_vs_mu_edge": 5 * 25, "qoe_vs_conf_threshold": 5 * 10,
              "qoe_vs_latency_threshold": 5 * 12, "qoe_vs_models": 5}
     for name, n in sizes.items():
         rows = rows_of(plot_dir / f"{name}.csv")

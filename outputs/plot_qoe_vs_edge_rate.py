@@ -1,20 +1,12 @@
 """plot_qoe_vs_edge_rate.py - laptop: Average QoE vs Edge processing rate, HCCLIO vs benchmarks.
 
-Reads the per-image files written by make_plot_data.py
-(reports/plot_data/per_frame/per_frame_<strategy>.csv) and sweeps the Edge
-processing rate mu_ES (tasks/s). For every image that went through the Edge,
-the measured Edge time is replaced by an exponential draw with mean 1000/mu ms:
+Plots reports/plot_data/qoe_vs_mu_edge.csv, written by make_plot_data.py. That file
+replays every strategy at each Edge rate mu_ES (0.01-20 tasks/s by default) with the
+Edge as an M/M/1 queue: each frame is re-decided at each rate, so HCCLIO's latency
+gate moves frames off a slow Edge while CPO and Edge only keep sending to it.
 
-    T_new = e2e_latency_ms - edge_inference_ms + Exp(1000/mu)
-    Q     = (1 - T_new / T_i_ms) * A_x,   0 if T_new >= T_i_ms   (Discard)
-
-Images that never visit the Edge (Local only, Cloud only, frames HCCLIO
-answered on the Pi or sent straight to the Cloud) keep their logged QoE.
-Each mu is averaged over --trials Monte-Carlo draws.
-
+    python outputs/make_plot_data.py
     python outputs/plot_qoe_vs_edge_rate.py
-    python outputs/plot_qoe_vs_edge_rate.py --points 40            # finer log-spaced sweep
-    python outputs/plot_qoe_vs_edge_rate.py --mu-min 5 --mu-max 40 --step 5   # linear steps
 """
 
 from __future__ import annotations
@@ -26,56 +18,20 @@ from pathlib import Path
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
-STRATEGIES = [  # (file suffix, legend label, matplotlib style)
-    ("hcclio", "HCCLIO (proposed)", dict(color="tab:red", marker="o", linewidth=2.2)),
-    ("cpo", "CPO", dict(color="tab:blue", marker="s")),
-    ("edge_only", "Edge only", dict(color="tab:green", marker="^")),
-    ("cloud_only", "Cloud only", dict(color="tab:purple", marker="v")),
-    ("local_only", "Local only", dict(color="tab:gray", marker="D")),
+STRATEGIES = [  # (name in the CSV, legend label, matplotlib style)
+    ("HCCLIO", "HCCLIO (proposed)", dict(color="tab:red", marker="o", linewidth=2.2)),
+    ("CPO", "CPO", dict(color="tab:blue", marker="s")),
+    ("Edge only", "Edge only", dict(color="tab:green", marker="^")),
+    ("Cloud only", "Cloud only", dict(color="tab:purple", marker="v", linestyle="--")),
+    ("Local only", "Local only", dict(color="tab:gray", marker="D")),
 ]
-
-
-def num(v: str) -> float:
-    return float(v) if v not in ("", None) else np.nan
-
-
-def load(path: Path) -> dict[str, np.ndarray]:
-    with open(path, newline="", encoding="utf-8") as fh:
-        rows = list(csv.DictReader(fh))
-    if not rows:
-        raise SystemExit(f"{path} is empty")
-    cols = ["e2e_latency_ms", "edge_inference_ms", "A_x", "T_i_ms", "Q_x"]
-    return {c: np.array([num(r[c]) for r in rows]) for c in cols}
-
-
-def avg_qoe(d: dict[str, np.ndarray], mu: float, trials: int, rng: np.random.Generator) -> tuple[float, float]:
-    """Mean QoE over all images, and its standard deviation across trials."""
-    uses_edge = ~np.isnan(d["edge_inference_ms"])
-    if not uses_edge.any():
-        q = float(np.mean(d["Q_x"]))
-        return q, 0.0
-    base = d["e2e_latency_ms"] - np.nan_to_num(d["edge_inference_ms"])
-    means = []
-    for _ in range(trials):
-        edge = rng.exponential(1000.0 / mu, size=len(base))
-        t = np.where(uses_edge, base + edge, d["e2e_latency_ms"])
-        q = np.where(t >= d["T_i_ms"], 0.0, (1.0 - t / d["T_i_ms"]) * d["A_x"])
-        q = np.where(uses_edge, q, d["Q_x"])
-        means.append(q.mean())
-    return float(np.mean(means)), float(np.std(means))
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--dir", default=str(HERE / "reports" / "plot_data" / "per_frame"),
-                    help="folder with per_frame_<strategy>.csv")
-    ap.add_argument("--mu-min", type=float, default=0.01)
-    ap.add_argument("--mu-max", type=float, default=20)
-    ap.add_argument("--step", type=float, default=None, help="linear step; omit for log-spaced points")
-    ap.add_argument("--points", type=int, default=25, help="number of log-spaced rates when --step is not given")
-    ap.add_argument("--trials", type=int, default=50, help="Monte-Carlo draws per mu")
-    ap.add_argument("--seed", type=int, default=1)
-    ap.add_argument("--out", default=None, help="output name without extension (default: <dir>/../qoe_vs_edge_rate)")
+    ap.add_argument("--csv", default=str(HERE / "reports" / "plot_data" / "qoe_vs_mu_edge.csv"))
+    ap.add_argument("--out", default=None, help="output name without extension (default: next to the CSV)")
+    ap.add_argument("--linear", action="store_true", help="linear x axis (default: log)")
     ap.add_argument("--no-show", action="store_true")
     args = ap.parse_args(argv)
 
@@ -84,49 +40,35 @@ def main(argv=None):
         matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    folder = Path(args.dir)
-    if args.step:
-        mus = np.arange(args.mu_min, args.mu_max + 1e-9, args.step)
-    else:
-        mus = np.geomspace(args.mu_min, args.mu_max, args.points)
-    out = Path(args.out) if args.out else folder.parent / "qoe_vs_edge_rate"
-    rng = np.random.default_rng(args.seed)
+    src = Path(args.csv)
+    if not src.exists():
+        raise SystemExit(f"{src} not found: run make_plot_data.py first")
+    with open(src, newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    out = Path(args.out) if args.out else src.with_name("qoe_vs_edge_rate")
 
-    table = {"mu_ES_tasks_per_s": mus}
     fig, ax = plt.subplots(figsize=(6.4, 4.4))
-    for key, label, style in STRATEGIES:
-        path = folder / f"per_frame_{key}.csv"
-        if not path.exists():
-            print(f"skipped {label}: {path} not found")
+    for name, label, style in STRATEGIES:
+        r = sorted((x for x in rows if x["strategy"] == name), key=lambda x: float(x["mu_ES"]))
+        if not r:
             continue
-        d = load(path)
-        res = [avg_qoe(d, mu, args.trials, rng) for mu in mus]
-        mean = np.array([r[0] for r in res])
-        std = np.array([r[1] for r in res])
-        table[f"{label}_avg_QoE"] = mean
-        table[f"{label}_std"] = std
-        ax.plot(mus, mean, label=label, markersize=5, **style)
-        ax.fill_between(mus, mean - std, mean + std, color=style["color"], alpha=0.12)
-        print(f"{label:18s} " + "  ".join(f"{m:.3g}:{q:.3f}" for m, q in zip(mus, mean)))
+        mu = np.array([float(x["mu_ES"]) for x in r])
+        q = np.array([float(x["mean_QoE"]) for x in r])
+        ci = np.array([float(x["ci95_QoE"]) for x in r])
+        ax.plot(mu, q, label=label, markersize=5, **style)
+        ax.fill_between(mu, q - ci, q + ci, color=style["color"], alpha=0.12)
+        print(f"{label:18s} " + "  ".join(f"{m:.3g}:{v:.3f}" for m, v in zip(mu, q)))
 
+    if not args.linear:
+        ax.set_xscale("log")
     ax.set_xlabel(r"Edge processing rate $\mu_{ES}$ (tasks/s)")
     ax.set_ylabel("Average QoE")
-    if not args.step:
-        ax.set_xscale("log")
-    ax.set_xlim(mus[0], mus[-1])
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()
-
-    out.parent.mkdir(parents=True, exist_ok=True)
-    with open(out.with_suffix(".csv"), "w", newline="", encoding="utf-8") as fh:
-        w = csv.writer(fh)
-        w.writerow(table.keys())
-        for i in range(len(mus)):
-            w.writerow([f"{table[k][i]:.6g}" for k in table])
     fig.savefig(out.with_suffix(".png"), dpi=300)
     fig.savefig(out.with_suffix(".pdf"))
-    print(f"saved {out}.png / .pdf / .csv")
+    print(f"saved {out}.png / .pdf")
     if not args.no_show:
         plt.show()
 

@@ -233,12 +233,14 @@ This writes the files below to `outputs\reports\plot_data\`, one row per strateg
 
 | File | Plot |
 |---|---|
-| `qoe_vs_mu_edge.csv` | Average QoE vs Edge processing rate μ_ES (Edge time ~ Exponential, mean 1/μ_ES) |
+| `qoe_vs_mu_edge.csv` | Average QoE vs Edge processing rate μ_ES, 0.01 to 20 tasks/s. The Edge is an M/M/1 queue fed at λ_ES = `mu_sweep.arrival_rate` × the share of frames sent to it; the E2LM probe waits in that queue, so HCCLIO's latency gate sees the wait and moves frames to the Cloud. `--edge-model exp` gives the old no-queue sweep. |
 | `qoe_vs_conf_threshold.csv` | Average QoE vs confidence threshold τ_conf (0.50 to 0.95) |
 | `qoe_vs_latency_threshold.csv` | Average QoE vs latency threshold τ_lat (0 to 1000 ms) |
 | `qoe_vs_models.csv` | Average QoE per model set (one trace per set, see below) |
 | `qoe_benchmark_comparison.csv` | QoE, accuracy, latency, discard rate and tier shares per strategy |
 | `per_frame/per_frame_<strategy>.csv` | One row per image: tier, path, prediction, correct, confidences, every delay on the path taken, T_E2E, A_x, Q_x |
+
+**Plot it:** `python outputs\plot_qoe_vs_edge_rate.py` draws `qoe_vs_mu_edge.csv` (log x axis) and saves `qoe_vs_edge_rate.png` and `.pdf`.
 
 **Re-scoring per image at another Edge rate:** in a per-frame file, for rows where `edge_inference_ms` is filled in, new T_E2E = `e2e_latency_ms` − `edge_inference_ms` + new Edge time. Then Q = (1 − T_E2E / `T_i_ms`) · `A_x`, or 0 if T_E2E ≥ `T_i_ms`. Cloud rows work the same way with `cloud_inference_ms`.
 
