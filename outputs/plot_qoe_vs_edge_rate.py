@@ -13,7 +13,8 @@ answered on the Pi or sent straight to the Cloud) keep their logged QoE.
 Each mu is averaged over --trials Monte-Carlo draws.
 
     python outputs/plot_qoe_vs_edge_rate.py
-    python outputs/plot_qoe_vs_edge_rate.py --mu-min 5 --mu-max 40 --step 1 --trials 50
+    python outputs/plot_qoe_vs_edge_rate.py --points 40            # finer log-spaced sweep
+    python outputs/plot_qoe_vs_edge_rate.py --mu-min 5 --mu-max 40 --step 5   # linear steps
 """
 
 from __future__ import annotations
@@ -68,9 +69,10 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dir", default=str(HERE / "reports" / "plot_data" / "per_frame"),
                     help="folder with per_frame_<strategy>.csv")
-    ap.add_argument("--mu-min", type=float, default=5)
-    ap.add_argument("--mu-max", type=float, default=40)
-    ap.add_argument("--step", type=float, default=5)
+    ap.add_argument("--mu-min", type=float, default=0.01)
+    ap.add_argument("--mu-max", type=float, default=20)
+    ap.add_argument("--step", type=float, default=None, help="linear step; omit for log-spaced points")
+    ap.add_argument("--points", type=int, default=25, help="number of log-spaced rates when --step is not given")
     ap.add_argument("--trials", type=int, default=50, help="Monte-Carlo draws per mu")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", default=None, help="output name without extension (default: <dir>/../qoe_vs_edge_rate)")
@@ -83,7 +85,10 @@ def main(argv=None):
     import matplotlib.pyplot as plt
 
     folder = Path(args.dir)
-    mus = np.arange(args.mu_min, args.mu_max + 1e-9, args.step)
+    if args.step:
+        mus = np.arange(args.mu_min, args.mu_max + 1e-9, args.step)
+    else:
+        mus = np.geomspace(args.mu_min, args.mu_max, args.points)
     out = Path(args.out) if args.out else folder.parent / "qoe_vs_edge_rate"
     rng = np.random.default_rng(args.seed)
 
@@ -102,10 +107,12 @@ def main(argv=None):
         table[f"{label}_std"] = std
         ax.plot(mus, mean, label=label, markersize=5, **style)
         ax.fill_between(mus, mean - std, mean + std, color=style["color"], alpha=0.12)
-        print(f"{label:18s} " + "  ".join(f"{m:g}:{q:.3f}" for m, q in zip(mus, mean)))
+        print(f"{label:18s} " + "  ".join(f"{m:.3g}:{q:.3f}" for m, q in zip(mus, mean)))
 
     ax.set_xlabel(r"Edge processing rate $\mu_{ES}$ (tasks/s)")
     ax.set_ylabel("Average QoE")
+    if not args.step:
+        ax.set_xscale("log")
     ax.set_xlim(mus[0], mus[-1])
     ax.grid(True, alpha=0.3)
     ax.legend()
